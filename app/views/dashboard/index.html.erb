@@ -1,0 +1,145 @@
+<div class="py-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
+    <p class="mt-1 text-sm text-gray-600">Welcome back, <%= current_user.name %>!</p>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <!-- Open Deals Value -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Open Deals Value</dt>
+                <dd class="text-lg font-semibold text-gray-900"><%= number_to_currency(@open_deals_value || 0, unit: "EUR ") %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Projects -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Active Projects</dt>
+                <dd class="text-lg font-semibold text-gray-900"><%= @active_projects&.count || 0 %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Quotations -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Pending Quotations</dt>
+                <dd class="text-lg font-semibold text-gray-900"><%= @pending_quotations || 0 %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Open Deals -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Open Deals</dt>
+                <dd class="text-lg font-semibold text-gray-900"><%= @pipeline_stats&.dig(:open) || 0 %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <!-- Recent Deals -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Recent Deals</h3>
+        </div>
+        <ul class="divide-y divide-gray-200">
+          <% if @recent_deals&.any? %>
+            <% @recent_deals.each do |deal| %>
+              <li class="px-4 py-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900"><%= deal.title %></p>
+                    <p class="text-sm text-gray-500"><%= deal.organization.name %></p>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-sm font-medium text-gray-900"><%= number_to_currency(deal.value || 0, unit: "EUR ") %></p>
+                    <p class="text-sm text-gray-500"><%= deal.assigned_to.name %></p>
+                  </div>
+                </div>
+              </li>
+            <% end %>
+          <% else %>
+            <li class="px-4 py-4 text-sm text-gray-500">No recent deals</li>
+          <% end %>
+        </ul>
+      </div>
+
+      <!-- My Tasks -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">My Tasks</h3>
+        </div>
+        <ul class="divide-y divide-gray-200">
+          <% if @my_tasks&.any? %>
+            <% @my_tasks.each do |task| %>
+              <li class="px-4 py-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900"><%= task.title %></p>
+                    <p class="text-sm text-gray-500"><%= task.project.name %></p>
+                  </div>
+                  <% if task.due_date %>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <%= task.overdue? ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800' %>">
+                      <%= task.due_date.strftime("%b %d") %>
+                    </span>
+                  <% end %>
+                </div>
+              </li>
+            <% end %>
+          <% else %>
+            <li class="px-4 py-4 text-sm text-gray-500">No pending tasks</li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

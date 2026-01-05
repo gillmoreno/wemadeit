@@ -1,0 +1,142 @@
+<div class="py-6">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <div class="flex items-center space-x-3">
+          <%= link_to crm_deals_path, class: "text-gray-400 hover:text-gray-500" do %>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          <% end %>
+          <h1 class="text-2xl font-semibold text-gray-900"><%= @deal.title %></h1>
+        </div>
+        <p class="mt-1 text-sm text-gray-500"><%= @deal.organization&.name %></p>
+      </div>
+      <div class="flex space-x-3">
+        <%= link_to "Edit", edit_crm_deal_path(@deal), class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+        <%= link_to "New Quotation", new_quotation_path(deal_id: @deal.id, organization_id: @deal.organization_id), class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Main Content -->
+      <div class="lg:col-span-2 space-y-6">
+        <!-- Deal Info Card -->
+        <div class="bg-white shadow rounded-lg p-6">
+          <h2 class="text-lg font-medium text-gray-900 mb-4">Deal Information</h2>
+
+          <dl class="grid grid-cols-2 gap-4">
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Value</dt>
+              <dd class="mt-1 text-2xl font-bold text-gray-900"><%= number_to_currency(@deal.value || 0, unit: "EUR ") %></dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Stage</dt>
+              <dd class="mt-1">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white" style="background-color: <%= @deal.pipeline_stage&.color || '#6B7280' %>;">
+                  <%= @deal.pipeline_stage&.name || "No stage" %>
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Probability</dt>
+              <dd class="mt-1 text-sm text-gray-900"><%= @deal.probability || 0 %>%</dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Expected Close</dt>
+              <dd class="mt-1 text-sm text-gray-900"><%= @deal.expected_close_date&.strftime("%B %d, %Y") || "Not set" %></dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Assigned To</dt>
+              <dd class="mt-1 text-sm text-gray-900"><%= @deal.assigned_to&.name || "Unassigned" %></dd>
+            </div>
+            <div>
+              <dt class="text-sm font-medium text-gray-500">Source</dt>
+              <dd class="mt-1 text-sm text-gray-900"><%= @deal.source || "Not specified" %></dd>
+            </div>
+          </dl>
+
+          <% if @deal.description.present? %>
+            <div class="mt-6 pt-6 border-t border-gray-200">
+              <dt class="text-sm font-medium text-gray-500">Description</dt>
+              <dd class="mt-1 text-sm text-gray-900"><%= @deal.description %></dd>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Interactions -->
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 class="text-lg font-medium text-gray-900">Interactions</h2>
+            <%= link_to "Log Interaction", new_crm_interaction_path(deal_id: @deal.id), class: "text-sm text-blue-600 hover:text-blue-800" %>
+          </div>
+          <ul class="divide-y divide-gray-200">
+            <% if @interactions.any? %>
+              <% @interactions.each do |interaction| %>
+                <li class="px-6 py-4">
+                  <div class="flex justify-between">
+                    <div>
+                      <p class="text-sm font-medium text-gray-900"><%= interaction.subject %></p>
+                      <p class="text-sm text-gray-500"><%= interaction.interaction_type.humanize %> - <%= interaction.interaction_date&.strftime("%b %d, %Y") %></p>
+                    </div>
+                    <%= link_to "View", crm_interaction_path(interaction), class: "text-sm text-blue-600 hover:text-blue-800" %>
+                  </div>
+                </li>
+              <% end %>
+            <% else %>
+              <li class="px-6 py-4 text-sm text-gray-500">No interactions recorded</li>
+            <% end %>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-6">
+        <!-- Contact Card -->
+        <% if @deal.contact %>
+          <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Contact</h3>
+            <div class="flex items-center">
+              <div class="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <span class="text-blue-600 font-medium"><%= @deal.contact.full_name.split.map(&:first).join.upcase[0..1] %></span>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm font-medium text-gray-900"><%= @deal.contact.full_name %></p>
+                <p class="text-sm text-gray-500"><%= @deal.contact.job_title %></p>
+              </div>
+            </div>
+            <div class="mt-4 space-y-2">
+              <% if @deal.contact.email.present? %>
+                <p class="text-sm text-gray-600"><%= @deal.contact.email %></p>
+              <% end %>
+              <% if @deal.contact.phone.present? %>
+                <p class="text-sm text-gray-600"><%= @deal.contact.phone %></p>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Notes -->
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 class="text-lg font-medium text-gray-900">Notes</h3>
+            <%= link_to "Add", new_note_path(notable_type: "Deal", notable_id: @deal.id), class: "text-sm text-blue-600 hover:text-blue-800" %>
+          </div>
+          <ul class="divide-y divide-gray-200 max-h-64 overflow-y-auto">
+            <% if @notes.any? %>
+              <% @notes.each do |note| %>
+                <li class="px-6 py-3">
+                  <p class="text-sm font-medium text-gray-900"><%= note.title %></p>
+                  <p class="text-xs text-gray-500"><%= note.created_at.strftime("%b %d") %></p>
+                </li>
+              <% end %>
+            <% else %>
+              <li class="px-6 py-4 text-sm text-gray-500">No notes</li>
+            <% end %>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,120 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <div class="flex items-center space-x-2">
+          <%= link_to project_path(@project), class: "text-gray-500 hover:text-gray-700" do %>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          <% end %>
+          <h1 class="text-2xl font-semibold text-gray-900"><%= @task_board.name %></h1>
+        </div>
+        <p class="mt-1 text-sm text-gray-600"><%= @project.name %></p>
+      </div>
+      <div class="flex space-x-3">
+        <%= link_to new_task_path(column_id: @columns.first&.id), class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700" do %>
+          <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          New Task
+        <% end %>
+      </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="overflow-x-auto" data-controller="kanban">
+      <div class="flex space-x-4 pb-4" style="min-width: fit-content;">
+        <% @columns.each do |column| %>
+          <div class="w-80 flex-shrink-0" data-kanban-target="column" data-column-id="<%= column.id %>">
+            <!-- Column Header -->
+            <div class="bg-white rounded-t-lg px-4 py-3 border-b-2 border-gray-200">
+              <div class="flex justify-between items-center">
+                <h3 class="font-medium text-gray-900"><%= column.name %></h3>
+                <span class="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-1 rounded-full">
+                  <%= column.tasks.count %>
+                </span>
+              </div>
+              <% if column.wip_limit && column.wip_limit > 0 %>
+                <p class="text-xs text-gray-500 mt-1">WIP Limit: <%= column.wip_limit %></p>
+              <% end %>
+            </div>
+
+            <!-- Tasks List -->
+            <div class="bg-gray-100 rounded-b-lg p-2 min-h-[500px]" data-tasks-list>
+              <% column.tasks.order(:position).each do |task| %>
+                <div class="bg-white rounded-lg shadow p-3 mb-2 cursor-move hover:shadow-md transition-all"
+                     draggable="true"
+                     data-kanban-target="task"
+                     data-task-id="<%= task.id %>">
+                  <%= link_to task_path(task), class: "block" do %>
+                    <!-- Labels -->
+                    <% if task.labels.any? %>
+                      <div class="flex flex-wrap gap-1 mb-2">
+                        <% task.labels.each do |label| %>
+                          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white" style="background-color: <%= label.color %>;">
+                            <%= label.name %>
+                          </span>
+                        <% end %>
+                      </div>
+                    <% end %>
+
+                    <!-- Title -->
+                    <h4 class="font-medium text-gray-900 text-sm"><%= task.title %></h4>
+
+                    <!-- Meta -->
+                    <div class="flex justify-between items-center mt-3">
+                      <div class="flex items-center space-x-2">
+                        <!-- Priority -->
+                        <% case task.priority %>
+                        <% when "high" %>
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">High</span>
+                        <% when "medium" %>
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Med</span>
+                        <% end %>
+
+                        <!-- Due Date -->
+                        <% if task.due_date %>
+                          <span class="text-xs <%= task.overdue? ? 'text-red-600' : 'text-gray-500' %>">
+                            <svg class="inline h-3 w-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <%= task.due_date.strftime("%b %d") %>
+                          </span>
+                        <% end %>
+                      </div>
+
+                      <!-- Assignee -->
+                      <% if task.assigned_to %>
+                        <span class="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-600 text-xs font-medium" title="<%= task.assigned_to.name %>">
+                          <%= task.assigned_to.name.split.map(&:first).join.upcase[0..1] %>
+                        </span>
+                      <% end %>
+                    </div>
+
+                    <!-- Hours -->
+                    <% if task.estimated_hours && task.estimated_hours > 0 %>
+                      <div class="mt-2 text-xs text-gray-500">
+                        <span><%= task.actual_hours || 0 %>h / <%= task.estimated_hours %>h</span>
+                        <div class="w-full bg-gray-200 rounded-full h-1 mt-1">
+                          <% progress = task.estimated_hours > 0 ? [(task.actual_hours.to_f / task.estimated_hours * 100), 100].min : 0 %>
+                          <div class="bg-blue-600 h-1 rounded-full" style="width: <%= progress %>%"></div>
+                        </div>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              <% end %>
+
+              <!-- Add Task Button -->
+              <%= link_to new_task_path(column_id: column.id), class: "block w-full py-2 text-center text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded" do %>
+                + Add task
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
