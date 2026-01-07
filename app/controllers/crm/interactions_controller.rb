@@ -3,8 +3,8 @@ module Crm
     before_action :set_interaction, only: [:show, :edit, :update, :destroy, :complete_follow_up]
 
     def index
-      @interactions = Interaction.includes(:contact, :deal, :user)
-        .order(interaction_date: :desc)
+      @interactions = Interaction.includes(:contact, :deal, :user, :organization)
+        .order(occurred_at: :desc)
         .page(params[:page])
 
       @pending_follow_ups = Interaction
@@ -20,7 +20,8 @@ module Crm
       @interaction = Interaction.new
       @interaction.contact_id = params[:contact_id] if params[:contact_id]
       @interaction.deal_id = params[:deal_id] if params[:deal_id]
-      @interaction.interaction_date = Time.current
+      @interaction.organization_id = params[:organization_id] if params[:organization_id]
+      @interaction.occurred_at = Time.current.change(sec: 0)
     end
 
     def edit
@@ -75,8 +76,9 @@ module Crm
 
     def interaction_params
       params.require(:interaction).permit(
-        :contact_id, :deal_id, :interaction_type, :interaction_date,
-        :subject, :description, :follow_up_date, :follow_up_notes, :follow_up_completed
+        :contact_id, :deal_id, :organization_id, :interaction_type, :occurred_at,
+        :subject, :body, :follow_up_date, :follow_up_notes, :follow_up_completed,
+        :duration_minutes, :audio_file, :transcript, :transcription_language
       )
     end
   end

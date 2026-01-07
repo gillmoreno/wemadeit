@@ -18,7 +18,11 @@ Rails.application.routes.draw do
     resources :pipelines do
       resources :pipeline_stages, only: [:create, :update, :destroy]
     end
-    resources :interactions
+    resources :interactions do
+      member do
+        patch :complete_follow_up
+      end
+    end
   end
 
   # Projects
@@ -60,6 +64,8 @@ Rails.application.routes.draw do
   post "ai/summarize_notes", to: "ai#summarize_notes"
   post "ai/draft_email", to: "ai#draft_email"
   post "ai/analyze_scope", to: "ai#analyze_scope"
+  post "ai/transcribe_audio", to: "ai#transcribe_audio"
+  post "ai/clean_transcript", to: "ai#clean_transcript"
 
   # Admin
   resources :users

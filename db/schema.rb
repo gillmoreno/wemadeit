@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_05_183710) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_07_131230) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -64,6 +64,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_05_183710) do
 
   create_table "interactions", force: :cascade do |t|
     t.text "body"
+    t.text "cleaned_transcript"
     t.bigint "contact_id", null: false
     t.datetime "created_at", null: false
     t.bigint "deal_id", null: false
@@ -74,6 +75,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_05_183710) do
     t.datetime "occurred_at"
     t.bigint "organization_id", null: false
     t.string "subject"
+    t.text "transcript"
+    t.string "transcription_language", default: "it"
+    t.integer "transcription_status", default: 0
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
     t.index ["contact_id"], name: "index_interactions_on_contact_id"

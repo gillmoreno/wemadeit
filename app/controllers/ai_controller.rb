@@ -46,6 +46,55 @@ class AiController < ApplicationController
     end
   end
 
+  def transcribe_audio
+    interaction = Interaction.find(params[:interaction_id])
+
+    unless interaction.audio_file.attached?
+      render json: { error: "No audio file attached" }, status: :bad_request
+      return
+    end
+
+    interaction.update!(transcription_status: :processing)
+
+    result = Ai::TranscriptionService.new(
+      interaction.audio_file,
+      language: interaction.transcription_language || "it"
+    ).call
+
+    if result.success?
+      interaction.update!(
+        transcript: result.data,
+        transcription_status: :completed
+      )
+      render json: { transcript: result.data, status: "completed" }
+    else
+      interaction.update!(transcription_status: :failed)
+      render json: { error: result.error }, status: :unprocessable_entity
+    end
+  end
+
+  def clean_transcript
+    interaction = Interaction.find(params[:interaction_id])
+    transcript = params[:transcript].presence || interaction.transcript
+
+    if transcript.blank?
+      render json: { error: "No transcript available" }, status: :bad_request
+      return
+    end
+
+    result = Ai::TranscriptCleaner.new(
+      transcript,
+      crm_context: interaction.crm_context
+    ).call
+
+    if result.success?
+      interaction.update!(cleaned_transcript: result.data)
+      render json: { cleaned_transcript: result.data }
+    else
+      render json: { error: result.error }, status: :unprocessable_entity
+    end
+  end
+
   private
 
   def ensure_ai_configured
