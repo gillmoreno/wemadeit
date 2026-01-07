@@ -1,5 +1,6 @@
 class AiController < ApplicationController
-  before_action :ensure_ai_configured
+  before_action :ensure_ai_configured, except: [:transcribe_audio]
+  before_action :ensure_transcription_available, only: [:transcribe_audio]
 
   def summarize_notes
     notes = Note.where(notable_type: params[:notable_type], notable_id: params[:notable_id])
@@ -100,6 +101,13 @@ class AiController < ApplicationController
   def ensure_ai_configured
     unless AiProvider.active.exists?
       render json: { error: "No AI provider configured" }, status: :service_unavailable
+    end
+  end
+
+  def ensure_transcription_available
+    # Allow if local Whisper is available OR OpenAI is configured
+    unless Ai::WhisperConfig.available? || AiProvider.where(name: "openai").active.exists?
+      render json: { error: "No transcription provider available. Install whisper-cpp or configure OpenAI." }, status: :service_unavailable
     end
   end
 end

@@ -15,6 +15,7 @@ services:
       - DATABASE_HOST=host.docker.internal
       - DATABASE_PORT=5432
       - DATABASE_USER=gilbertomorenocruz
+      - WHISPER_SERVER_URL=http://host.docker.internal:8080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     stdin_open: true

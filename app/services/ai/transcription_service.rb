@@ -2,16 +2,56 @@ module Ai
   class TranscriptionService < BaseService
     SUPPORTED_LANGUAGES = %w[it en es fr de pt nl pl ru ja zh].freeze
 
-    def initialize(audio_file, language: "it")
+    # provider: :local, :openai, or :auto (default)
+    def initialize(audio_file, language: "it", provider: :auto)
       super()
       @audio_file = audio_file
       @language = language
-      @openai_provider = AiProvider.where(provider_type: "openai").active.first
+      @provider = provider
     end
 
     def call
       return failure("No audio file provided") unless @audio_file
-      return failure("No OpenAI provider configured") unless @openai_provider
+
+      case resolve_provider
+      when :local
+        local_transcription
+      when :openai
+        openai_transcription
+      else
+        failure("No transcription provider available. Install whisper-cpp or configure OpenAI.")
+      end
+    end
+
+    private
+
+    def resolve_provider
+      case @provider
+      when :local
+        :local if WhisperConfig.available?
+      when :openai
+        :openai if openai_configured?
+      when :auto
+        # Prefer local if available, fall back to OpenAI
+        if WhisperConfig.available?
+          :local
+        elsif openai_configured?
+          :openai
+        end
+      end
+    end
+
+    def local_transcription
+      LocalTranscriptionService.new(@audio_file, language: @language).call
+    end
+
+    def openai_configured?
+      @openai_provider ||= AiProvider.where(name: "openai").active.first
+      @openai_provider.present?
+    end
+
+    def openai_transcription
+      return failure("No OpenAI provider configured") unless openai_configured?
 
       client = OpenAI::Client.new(access_token: @openai_provider.api_key)
 
@@ -42,8 +82,6 @@ module Ai
         tempfile&.unlink
       end
     end
-
-    private
 
     def download_to_tempfile
       return nil unless @audio_file.attached?

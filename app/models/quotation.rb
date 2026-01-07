@@ -11,6 +11,14 @@ class Quotation < ApplicationRecord
 
   enum :status, { draft: 0, sent: 1, viewed: 2, accepted: 3, declined: 4, expired: 5 }
 
+  # Aliases for form params compatibility
+  alias_attribute :subject, :title
+  alias_attribute :terms, :terms_and_conditions
+
+  def total_discount
+    discount_amount || 0
+  end
+
   validates :number, presence: true, uniqueness: true
   validates :title, presence: true
   validates :organization, presence: true

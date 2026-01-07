@@ -1,0 +1,52 @@
+<div data-nested-form-target="item" class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+  <%= form.hidden_field :id %>
+  <%= form.hidden_field :_destroy %>
+  <%= form.hidden_field :position %>
+
+  <div class="grid grid-cols-12 gap-4">
+    <!-- Service Selector (optional) -->
+    <div class="col-span-12 md:col-span-3">
+      <%= form.label :service_id, "Service (optional)", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.collection_select :service_id, Service.active.order(:name), :id, :name, { include_blank: "Custom item" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" %>
+    </div>
+
+    <!-- Name -->
+    <div class="col-span-12 md:col-span-3">
+      <%= form.label :name, "Item Name", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.text_field :name, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm", placeholder: "Service or product name", required: true %>
+    </div>
+
+    <!-- Quantity -->
+    <div class="col-span-4 md:col-span-1">
+      <%= form.label :quantity, "Qty", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.number_field :quantity, step: 0.01, min: 0, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm", value: form.object.quantity || 1 %>
+    </div>
+
+    <!-- Unit Type -->
+    <div class="col-span-4 md:col-span-1">
+      <%= form.label :unit_type, "Unit", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.text_field :unit_type, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm", placeholder: "hrs" %>
+    </div>
+
+    <!-- Unit Price -->
+    <div class="col-span-4 md:col-span-2">
+      <%= form.label :unit_price, "Unit Price", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.number_field :unit_price, step: 0.01, min: 0, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm", placeholder: "0.00" %>
+    </div>
+
+    <!-- Remove Button -->
+    <div class="col-span-12 md:col-span-2 flex items-end justify-end">
+      <button type="button" data-action="nested-form#remove" class="px-3 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Description (full width) -->
+    <div class="col-span-12">
+      <%= form.label :description, "Description (optional)", class: "block text-xs font-medium text-gray-500" %>
+      <%= form.text_area :description, rows: 2, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm", placeholder: "Additional details about this item..." %>
+    </div>
+  </div>
+</div>

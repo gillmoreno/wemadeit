@@ -9,7 +9,7 @@ module Crm
     end
 
     def show
-      @contacts = @organization.contacts.order(:name)
+      @contacts = @organization.contacts.order(:first_name, :last_name)
       @deals = @organization.deals.includes(:pipeline_stage, :assigned_to).order(created_at: :desc)
       @projects = @organization.projects.order(created_at: :desc)
       @quotations = @organization.quotations.order(created_at: :desc)

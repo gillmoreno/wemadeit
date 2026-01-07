@@ -117,7 +117,7 @@ class QuotationsController < ApplicationController
       :subject, :introduction, :terms, :valid_until,
       :tax_rate, :discount_amount, :discount_percentage, :currency,
       quotation_items_attributes: [
-        :id, :service_id, :description, :quantity, :unit_price, :position, :_destroy
+        :id, :service_id, :name, :description, :quantity, :unit_price, :unit_type, :position, :_destroy
       ]
     )
   end
