@@ -1,0 +1,124 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Projects</h1>
+        <p class="mt-1 text-sm text-gray-600">Manage active and completed projects</p>
+      </div>
+      <%= link_to new_project_path, class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700" do %>
+        <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        New Project
+      <% end %>
+    </div>
+
+    <!-- Status Filter Tabs -->
+    <div class="mb-6 border-b border-gray-200">
+      <nav class="-mb-px flex space-x-8">
+        <%= link_to "All", projects_path, class: "#{params[:status].blank? ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm" %>
+        <% Project.statuses.keys.each do |status| %>
+          <%= link_to status.humanize, projects_path(status: status), class: "#{params[:status] == status ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm" %>
+        <% end %>
+      </nav>
+    </div>
+
+    <!-- Projects Grid -->
+    <% if @projects.any? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @projects.each do |project| %>
+          <div class="bg-white shadow rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+            <div class="p-6">
+              <div class="flex items-start justify-between">
+                <div class="flex-1 min-w-0">
+                  <span class="text-xs font-mono text-gray-500"><%= project.code %></span>
+                  <h3 class="mt-1 text-lg font-medium text-gray-900 truncate">
+                    <%= link_to project.name, project_path(project), class: "hover:text-blue-600" %>
+                  </h3>
+                  <p class="text-sm text-gray-500">
+                    <%= link_to project.organization.name, crm_organization_path(project.organization), class: "hover:text-blue-600" %>
+                  </p>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                  <%= case project.status
+                      when 'presales' then 'bg-yellow-100 text-yellow-800'
+                      when 'active' then 'bg-green-100 text-green-800'
+                      when 'on_hold' then 'bg-orange-100 text-orange-800'
+                      when 'completed' then 'bg-blue-100 text-blue-800'
+                      when 'support' then 'bg-purple-100 text-purple-800'
+                      end %>">
+                  <%= project.status.humanize %>
+                </span>
+              </div>
+
+              <% if project.description.present? %>
+                <p class="mt-3 text-sm text-gray-600 line-clamp-2"><%= project.description %></p>
+              <% end %>
+
+              <!-- Progress Bar -->
+              <div class="mt-4">
+                <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                  <span>Progress</span>
+                  <span><%= project.progress_percentage %>%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-blue-600 h-2 rounded-full" style="width: <%= project.progress_percentage %>%"></div>
+                </div>
+              </div>
+
+              <!-- Meta Info -->
+              <div class="mt-4 flex items-center justify-between text-sm">
+                <div class="flex items-center text-gray-500">
+                  <% if project.project_manager %>
+                    <span class="inline-flex items-center">
+                      <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <%= project.project_manager.name %>
+                    </span>
+                  <% end %>
+                </div>
+                <% if project.target_end_date %>
+                  <span class="text-gray-500 <%= project.on_track? ? '' : 'text-red-600' %>">
+                    Due <%= project.target_end_date.strftime("%b %d") %>
+                  </span>
+                <% end %>
+              </div>
+
+              <% if project.budget && project.budget > 0 %>
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                  <span class="text-sm font-medium text-gray-900">
+                    <%= number_to_currency(project.budget, unit: project.currency == "EUR" ? "€" : "$") %>
+                  </span>
+                  <span class="text-xs text-gray-500">budget</span>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <% if @projects.respond_to?(:total_pages) && @projects.total_pages > 1 %>
+        <div class="mt-6">
+          <%= paginate @projects %>
+        </div>
+      <% end %>
+    <% else %>
+      <div class="text-center py-12 bg-white rounded-lg shadow">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" width="48" height="48">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No projects</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating a new project or converting an accepted quotation.</p>
+        <div class="mt-6">
+          <%= link_to new_project_path, class: "inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            New Project
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

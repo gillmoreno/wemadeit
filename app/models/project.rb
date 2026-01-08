@@ -1,12 +1,15 @@
 class Project < ApplicationRecord
-  belongs_to :organization
-  belongs_to :deal, optional: true
+  belongs_to :deal
   belongs_to :project_manager, class_name: "User", optional: true
+
+  # Delegate organization to deal
+  delegate :organization, to: :deal
 
   has_many :project_members, dependent: :destroy
   has_many :team_members, through: :project_members, source: :user
   has_many :task_boards, -> { order(:position) }, dependent: :destroy
   has_many :tasks, through: :task_boards
+  has_many :notes, as: :notable, dependent: :destroy
 
   enum :project_type, { landing_page: 0, website: 1, ecommerce: 2, custom_app: 3 }
   enum :status, { presales: 0, active: 1, on_hold: 2, completed: 3, support: 4 }

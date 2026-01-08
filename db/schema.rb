@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_08_170321) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -188,7 +188,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
     t.bigint "deal_id", null: false
     t.text "description"
     t.string "name"
-    t.bigint "organization_id", null: false
     t.bigint "project_manager_id"
     t.integer "project_type"
     t.date "start_date"
@@ -196,7 +195,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
     t.date "target_end_date"
     t.datetime "updated_at", null: false
     t.index ["deal_id"], name: "index_projects_on_deal_id"
-    t.index ["organization_id"], name: "index_projects_on_organization_id"
     t.index ["project_manager_id"], name: "index_projects_on_project_manager_id"
   end
 
@@ -217,15 +215,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
   end
 
   create_table "quotations", force: :cascade do |t|
-    t.bigint "contact_id"
     t.datetime "created_at", null: false
     t.bigint "created_by_id", null: false
     t.string "currency", default: "EUR"
-    t.bigint "deal_id"
+    t.bigint "deal_id", null: false
     t.decimal "discount_amount", precision: 12, scale: 2, default: "0.0"
     t.text "introduction"
     t.string "number", null: false
-    t.bigint "organization_id", null: false
     t.string "public_token"
     t.integer "status", default: 0
     t.decimal "subtotal", precision: 12, scale: 2
@@ -237,11 +233,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
     t.datetime "updated_at", null: false
     t.date "valid_until"
     t.integer "version", default: 1
-    t.index ["contact_id"], name: "index_quotations_on_contact_id"
     t.index ["created_by_id"], name: "index_quotations_on_created_by_id"
     t.index ["deal_id"], name: "index_quotations_on_deal_id"
     t.index ["number"], name: "index_quotations_on_number", unique: true
-    t.index ["organization_id"], name: "index_quotations_on_organization_id"
     t.index ["public_token"], name: "index_quotations_on_public_token", unique: true
   end
 
@@ -354,13 +348,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_07_165708) do
   add_foreign_key "project_members", "projects"
   add_foreign_key "project_members", "users"
   add_foreign_key "projects", "deals"
-  add_foreign_key "projects", "organizations"
   add_foreign_key "projects", "users", column: "project_manager_id"
   add_foreign_key "quotation_items", "quotations"
   add_foreign_key "quotation_items", "services"
-  add_foreign_key "quotations", "contacts"
   add_foreign_key "quotations", "deals"
-  add_foreign_key "quotations", "organizations"
   add_foreign_key "quotations", "users", column: "created_by_id"
   add_foreign_key "sessions", "users"
   add_foreign_key "signatures", "quotations"

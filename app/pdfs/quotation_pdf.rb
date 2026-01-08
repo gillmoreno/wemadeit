@@ -48,7 +48,7 @@ class QuotationPdf < ApplicationPdf
     move_down 5
 
     body_text @organization.name, style: :bold
-    body_text @contact.name if @contact
+    body_text @contact.full_name if @contact
     body_text @contact.job_title if @contact&.job_title
     body_text @organization.address if @organization.address
     body_text "#{@organization.city}, #{@organization.country}".strip.gsub(/^,\s*|,\s*$/, "") if @organization.city || @organization.country

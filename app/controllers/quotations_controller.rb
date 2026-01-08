@@ -3,7 +3,7 @@ class QuotationsController < ApplicationController
   before_action :set_quotation, only: [:show, :edit, :update, :destroy, :preview, :send_to_client, :duplicate, :convert_to_project]
 
   def index
-    @quotations = Quotation.includes(:organization, :contact, :created_by)
+    @quotations = Quotation.includes(deal: [:organization, :contact], created_by: [])
       .order(created_at: :desc)
       .page(params[:page])
 
@@ -16,10 +16,9 @@ class QuotationsController < ApplicationController
 
   def new
     @quotation = Quotation.new
-    @quotation.organization_id = params[:organization_id] if params[:organization_id]
     @quotation.deal_id = params[:deal_id] if params[:deal_id]
     @quotation.valid_until = 30.days.from_now
-    @quotation.tax_rate = 21.0 # Default VAT
+    @quotation.tax_rate = 22.0 # Default VAT
   end
 
   def edit
@@ -113,7 +112,7 @@ class QuotationsController < ApplicationController
 
   def quotation_params
     params.require(:quotation).permit(
-      :organization_id, :contact_id, :deal_id,
+      :deal_id,
       :subject, :introduction, :terms, :valid_until,
       :tax_rate, :discount_amount, :discount_percentage, :currency,
       quotation_items_attributes: [

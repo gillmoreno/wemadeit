@@ -1,0 +1,253 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <div class="flex items-center space-x-3">
+          <%= link_to projects_path, class: "text-gray-400 hover:text-gray-500" do %>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          <% end %>
+          <span class="text-sm font-mono text-gray-500"><%= @project.code %></span>
+          <h1 class="text-2xl font-semibold text-gray-900"><%= @project.name %></h1>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+            <%= case @project.status
+                when 'presales' then 'bg-yellow-100 text-yellow-800'
+                when 'active' then 'bg-green-100 text-green-800'
+                when 'on_hold' then 'bg-orange-100 text-orange-800'
+                when 'completed' then 'bg-blue-100 text-blue-800'
+                when 'support' then 'bg-purple-100 text-purple-800'
+                end %>">
+            <%= @project.status.humanize %>
+          </span>
+        </div>
+        <p class="mt-1 text-sm text-gray-600">
+          <%= link_to @project.organization.name, crm_organization_path(@project.organization), class: "hover:text-blue-600" %>
+          <% if @project.project_type %>
+            <span class="text-gray-400 mx-1">&bull;</span>
+            <%= @project.project_type.humanize %>
+          <% end %>
+        </p>
+      </div>
+      <div class="flex items-center space-x-2">
+        <% if @project.presales? %>
+          <%= button_to "Activate Project", activate_project_path(@project), method: :post, class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700" %>
+        <% elsif @project.active? %>
+          <%= button_to "Mark Complete", complete_project_path(@project), method: :post, class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" %>
+        <% elsif @project.completed? %>
+          <%= button_to "Move to Support", support_project_path(@project), method: :post, class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+        <% end %>
+        <%= link_to "Edit", edit_project_path(@project), class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <!-- Sidebar -->
+      <div class="lg:col-span-1 space-y-6">
+        <!-- Project Details -->
+        <div class="bg-white shadow rounded-lg p-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Details</h3>
+          <dl class="space-y-4">
+            <% if @project.deal %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Deal</dt>
+                <dd class="mt-1 text-sm text-blue-600">
+                  <%= link_to @project.deal.title, crm_deal_path(@project.deal), class: "hover:text-blue-800" %>
+                </dd>
+              </div>
+            <% end %>
+
+            <% if @project.project_manager %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Project Manager</dt>
+                <dd class="mt-1 text-sm text-gray-900"><%= @project.project_manager.name %></dd>
+              </div>
+            <% end %>
+
+            <% if @project.start_date %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Start Date</dt>
+                <dd class="mt-1 text-sm text-gray-900"><%= @project.start_date.strftime("%B %d, %Y") %></dd>
+              </div>
+            <% end %>
+
+            <% if @project.target_end_date %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Target End Date</dt>
+                <dd class="mt-1 text-sm <%= @project.on_track? ? 'text-gray-900' : 'text-red-600' %>">
+                  <%= @project.target_end_date.strftime("%B %d, %Y") %>
+                  <% unless @project.on_track? %>
+                    <span class="text-xs">(overdue)</span>
+                  <% end %>
+                </dd>
+              </div>
+            <% end %>
+
+            <% if @project.actual_end_date %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Completed</dt>
+                <dd class="mt-1 text-sm text-gray-900"><%= @project.actual_end_date.strftime("%B %d, %Y") %></dd>
+              </div>
+            <% end %>
+
+            <% if @project.budget && @project.budget > 0 %>
+              <div>
+                <dt class="text-sm font-medium text-gray-500">Budget</dt>
+                <dd class="mt-1 text-sm font-medium text-gray-900">
+                  <%= number_to_currency(@project.budget, unit: @project.currency == "EUR" ? "€" : "$") %>
+                </dd>
+              </div>
+            <% end %>
+          </dl>
+        </div>
+
+        <!-- Progress -->
+        <div class="bg-white shadow rounded-lg p-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Progress</h3>
+          <div class="space-y-3">
+            <div>
+              <div class="flex items-center justify-between text-sm mb-1">
+                <span class="text-gray-600">Overall</span>
+                <span class="font-medium text-gray-900"><%= @project.progress_percentage %>%</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2.5">
+                <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: <%= @project.progress_percentage %>%"></div>
+              </div>
+            </div>
+            <div class="pt-2 text-sm text-gray-500">
+              <% total_tasks = @project.tasks.count %>
+              <% completed_tasks = @project.tasks.joins(:task_column).where(task_columns: { name: "Done" }).count %>
+              <%= completed_tasks %> of <%= total_tasks %> tasks completed
+            </div>
+          </div>
+        </div>
+
+        <!-- Team -->
+        <div class="bg-white shadow rounded-lg p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Team</h3>
+            <%= link_to "Manage", "#", class: "text-sm text-blue-600 hover:text-blue-800" %>
+          </div>
+          <% if @team_members.any? %>
+            <ul class="space-y-3">
+              <% @team_members.each do |member| %>
+                <li class="flex items-center justify-between">
+                  <div class="flex items-center">
+                    <div class="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center text-sm font-medium text-gray-600">
+                      <%= member.user.name.split.map(&:first).join.upcase[0..1] %>
+                    </div>
+                    <div class="ml-3">
+                      <p class="text-sm font-medium text-gray-900"><%= member.user.name %></p>
+                      <p class="text-xs text-gray-500"><%= member.role&.humanize || "Member" %></p>
+                    </div>
+                  </div>
+                </li>
+              <% end %>
+            </ul>
+          <% else %>
+            <p class="text-sm text-gray-500">No team members assigned yet.</p>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Main Content - Kanban Board -->
+      <div class="lg:col-span-3">
+        <% if @project.description.present? %>
+          <div class="bg-white shadow rounded-lg p-6 mb-6">
+            <h3 class="text-sm font-medium text-gray-900 mb-2">Description</h3>
+            <div class="prose prose-sm max-w-none text-gray-600">
+              <%= simple_format(@project.description) %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Task Board -->
+        <% @task_boards.each do |board| %>
+          <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 class="text-lg font-medium text-gray-900"><%= board.name %></h3>
+              <%= link_to new_task_path(task_board_id: board.id), class: "inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200" do %>
+                <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Task
+              <% end %>
+            </div>
+
+            <div class="p-4 overflow-x-auto" data-controller="kanban">
+              <div class="flex space-x-4 min-w-max">
+                <% board.task_columns.order(:position).each do |column| %>
+                  <div class="w-72 flex-shrink-0">
+                    <div class="bg-gray-100 rounded-lg p-3 h-full">
+                      <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-medium text-gray-900">
+                          <%= column.name %>
+                          <span class="ml-2 text-xs text-gray-500">(<%= column.tasks.count %>)</span>
+                        </h4>
+                      </div>
+
+                      <div data-kanban-target="column" data-column-id="<%= column.id %>" class="space-y-2 min-h-[200px] rounded transition-colors">
+                        <div data-tasks-list class="space-y-2">
+                          <% column.tasks.order(:position).each do |task| %>
+                            <div data-kanban-target="task" data-task-id="<%= task.id %>"
+                                 class="bg-white rounded-lg shadow-sm p-3 cursor-move hover:shadow-md transition-shadow border border-gray-200">
+                              <div class="flex items-start justify-between">
+                                <p class="text-sm font-medium text-gray-900"><%= task.title %></p>
+                                <% if task.priority %>
+                                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                                    <%= case task.priority
+                                        when 'low' then 'bg-gray-100 text-gray-600'
+                                        when 'medium' then 'bg-blue-100 text-blue-600'
+                                        when 'high' then 'bg-orange-100 text-orange-600'
+                                        when 'urgent' then 'bg-red-100 text-red-600'
+                                        end %>">
+                                    <%= task.priority.first.upcase %>
+                                  </span>
+                                <% end %>
+                              </div>
+                              <% if task.description.present? %>
+                                <p class="mt-1 text-xs text-gray-500 line-clamp-2"><%= task.description %></p>
+                              <% end %>
+                              <div class="mt-2 flex items-center justify-between text-xs">
+                                <% if task.assigned_to %>
+                                  <span class="inline-flex items-center text-gray-500">
+                                    <div class="h-5 w-5 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600 mr-1">
+                                      <%= task.assigned_to.name.split.map(&:first).join.upcase[0..1] %>
+                                    </div>
+                                    <%= task.assigned_to.name.split.first %>
+                                  </span>
+                                <% else %>
+                                  <span></span>
+                                <% end %>
+                                <% if task.due_date %>
+                                  <span class="<%= task.overdue? ? 'text-red-600' : 'text-gray-500' %>">
+                                    <%= task.due_date.strftime("%b %d") %>
+                                  </span>
+                                <% end %>
+                              </div>
+                            </div>
+                          <% end %>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <% if @task_boards.empty? %>
+          <div class="bg-white shadow rounded-lg p-12 text-center">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No task boards</h3>
+            <p class="mt-1 text-sm text-gray-500">Create a task board to start organizing work.</p>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

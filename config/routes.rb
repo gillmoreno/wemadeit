@@ -27,6 +27,11 @@ Rails.application.routes.draw do
 
   # Projects
   resources :projects do
+    member do
+      post :activate
+      post :complete
+      post :support
+    end
     resources :task_boards do
       resources :task_columns, only: [:create, :update, :destroy]
     end

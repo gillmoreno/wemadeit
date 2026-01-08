@@ -28,7 +28,7 @@
 
           <div>
             <%= form.label :contact_id, "Contact", class: "block text-sm font-medium text-gray-700" %>
-            <%= form.collection_select :contact_id, Contact.order(:name), :id, :name, { prompt: "Select contact" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.collection_select :contact_id, Contact.order(:first_name, :last_name), :id, :full_name, { prompt: "Select contact" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
           </div>
         </div>
 

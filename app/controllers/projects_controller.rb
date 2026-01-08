@@ -1,9 +1,9 @@
 class ProjectsController < ApplicationController
   before_action :require_can_manage_projects!, except: [:index, :show]
-  before_action :set_project, only: [:show, :edit, :update, :destroy]
+  before_action :set_project, only: [:show, :edit, :update, :destroy, :activate, :complete, :support]
 
   def index
-    @projects = Project.includes(:organization, :project_manager)
+    @projects = Project.includes(deal: :organization, project_manager: [])
       .order(created_at: :desc)
       .page(params[:page])
 
@@ -18,7 +18,7 @@ class ProjectsController < ApplicationController
 
   def new
     @project = Project.new
-    @project.organization_id = params[:organization_id] if params[:organization_id]
+    @project.deal_id = params[:deal_id] if params[:deal_id]
   end
 
   def edit
@@ -62,6 +62,30 @@ class ProjectsController < ApplicationController
     end
   end
 
+  def activate
+    if @project.activate!
+      redirect_to project_path(@project), notice: "Project has been activated."
+    else
+      redirect_to project_path(@project), alert: "Could not activate project."
+    end
+  end
+
+  def complete
+    if @project.complete!
+      redirect_to project_path(@project), notice: "Project has been marked as completed."
+    else
+      redirect_to project_path(@project), alert: "Could not complete project."
+    end
+  end
+
+  def support
+    if @project.move_to_support!
+      redirect_to project_path(@project), notice: "Project has been moved to support."
+    else
+      redirect_to project_path(@project), alert: "Could not move project to support."
+    end
+  end
+
   private
 
   def set_project
@@ -70,9 +94,9 @@ class ProjectsController < ApplicationController
 
   def project_params
     params.require(:project).permit(
-      :name, :code, :organization_id, :project_type, :status,
+      :name, :code, :deal_id, :project_type, :status,
       :start_date, :target_end_date, :actual_end_date,
-      :budget, :hourly_rate, :project_manager_id, :description
+      :budget, :project_manager_id, :description
     )
   end
 end

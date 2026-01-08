@@ -1,8 +1,9 @@
 class Quotation < ApplicationRecord
-  belongs_to :organization
-  belongs_to :contact, optional: true
-  belongs_to :deal, optional: true
+  belongs_to :deal
   belongs_to :created_by, class_name: "User"
+
+  # Delegate organization and contact to deal
+  delegate :organization, :contact, to: :deal
 
   has_many :quotation_items, -> { order(:position) }, dependent: :destroy
   has_one :signature, dependent: :destroy
@@ -21,7 +22,6 @@ class Quotation < ApplicationRecord
 
   validates :number, presence: true, uniqueness: true
   validates :title, presence: true
-  validates :organization, presence: true
   validates :created_by, presence: true
 
   before_validation :generate_number, on: :create
@@ -73,7 +73,6 @@ class Quotation < ApplicationRecord
     return unless accepted?
 
     Project.create!(
-      organization: organization,
       deal: deal,
       name: title,
       description: "Created from quotation #{number}",

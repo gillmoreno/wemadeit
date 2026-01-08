@@ -1,0 +1,96 @@
+<%= form_with model: project, class: "space-y-6" do |form| %>
+  <% if project.errors.any? %>
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+      <ul class="list-disc list-inside">
+        <% project.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <!-- Basic Info -->
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Project Information</h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :deal_id, "Deal", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.collection_select :deal_id, Deal.includes(:organization).where(status: :won).or(Deal.where(id: project.deal_id)).order(created_at: :desc), :id, ->(d) { "#{d.title} (#{d.organization&.name})" }, { prompt: "Select deal" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true %>
+        <p class="mt-1 text-xs text-gray-500">Organization is taken from the deal</p>
+      </div>
+
+      <div>
+        <%= form.label :name, class: "block text-sm font-medium text-gray-700" %>
+        <%= form.text_field :name, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :project_type, "Type", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.select :project_type, Project.project_types.keys.map { |t| [t.humanize, t] }, { include_blank: "Select type" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <div>
+        <%= form.label :status, class: "block text-sm font-medium text-gray-700" %>
+        <%= form.select :status, Project.statuses.keys.map { |s| [s.humanize, s] }, {}, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+    </div>
+
+    <div>
+      <%= form.label :description, class: "block text-sm font-medium text-gray-700" %>
+      <%= form.text_area :description, rows: 3, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+    </div>
+  </div>
+
+  <!-- Team & Dates -->
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Team & Timeline</h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :project_manager_id, "Project Manager", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.collection_select :project_manager_id, User.order(:name), :id, :name, { include_blank: "Select manager" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <div>
+        <%= form.label :start_date, class: "block text-sm font-medium text-gray-700" %>
+        <%= form.date_field :start_date, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <div>
+        <%= form.label :target_end_date, "Target End Date", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.date_field :target_end_date, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <% if project.persisted? && project.completed? %>
+        <div>
+          <%= form.label :actual_end_date, "Actual End Date", class: "block text-sm font-medium text-gray-700" %>
+          <%= form.date_field :actual_end_date, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Budget -->
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Budget</h3>
+
+    <div>
+      <%= form.label :budget, class: "block text-sm font-medium text-gray-700" %>
+      <div class="mt-1 relative rounded-md shadow-sm max-w-xs">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <span class="text-gray-500 sm:text-sm">EUR</span>
+        </div>
+        <%= form.number_field :budget, step: 0.01, class: "block w-full pl-12 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <div class="flex justify-end space-x-3">
+    <%= link_to "Cancel", projects_path, class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+    <%= form.submit project.persisted? ? "Update Project" : "Create Project", class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 cursor-pointer" %>
+  </div>
+<% end %>
