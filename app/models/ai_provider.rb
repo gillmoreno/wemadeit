@@ -1,7 +1,7 @@
 class AiProvider < ApplicationRecord
   encrypts :api_key_encrypted
 
-  validates :name, presence: true, inclusion: { in: %w[anthropic openai] }
+  validates :name, presence: true, inclusion: { in: %w[anthropic openai groq] }
 
   scope :active, -> { where(active: true) }
 
@@ -19,7 +19,20 @@ class AiProvider < ApplicationRecord
     name == "openai"
   end
 
-  def decrypted_api_key
+  def groq?
+    name == "groq"
+  end
+
+  # Alias methods for BaseService compatibility
+  def provider_type
+    name
+  end
+
+  def model_name
+    model
+  end
+
+  def api_key
     api_key_encrypted
   end
 

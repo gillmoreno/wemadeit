@@ -32,6 +32,11 @@ module Ai
         Anthropic::Client.new(api_key: @provider.api_key)
       when "openai"
         OpenAI::Client.new(access_token: @provider.api_key)
+      when "groq"
+        OpenAI::Client.new(
+          access_token: @provider.api_key,
+          uri_base: "https://api.groq.com/openai/v1"
+        )
       else
         nil
       end
@@ -43,7 +48,7 @@ module Ai
       case @provider.provider_type
       when "anthropic"
         generate_anthropic_completion(prompt, system_prompt)
-      when "openai"
+      when "openai", "groq"
         generate_openai_completion(prompt, system_prompt)
       else
         failure("Unsupported provider type")
