@@ -1,8 +1,8 @@
 class Organization < ApplicationRecord
   has_many :contacts, dependent: :destroy
   has_many :deals, dependent: :destroy
-  has_many :projects, dependent: :destroy
-  has_many :quotations, dependent: :destroy
+  has_many :projects, through: :deals
+  has_many :quotations, through: :deals
   has_many :interactions, dependent: :destroy
 
   validates :name, presence: true

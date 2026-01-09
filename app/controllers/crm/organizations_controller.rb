@@ -3,7 +3,7 @@ module Crm
     before_action :set_organization, only: [:show, :edit, :update, :destroy]
 
     def index
-      @organizations = Organization.includes(:contacts, :deals, :projects)
+      @organizations = Organization.includes(:contacts, deals: :project)
         .order(created_at: :desc)
         .page(params[:page])
     end
