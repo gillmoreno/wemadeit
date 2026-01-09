@@ -1,0 +1,17 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+      <div class="flex items-center space-x-3">
+        <%= link_to crm_pipelines_path, class: "text-gray-400 hover:text-gray-500" do %>
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        <% end %>
+        <h1 class="text-2xl font-semibold text-gray-900">New Pipeline</h1>
+      </div>
+      <p class="mt-1 text-sm text-gray-600">Create a new sales pipeline to organize deals</p>
+    </div>
+
+    <%= render "form", pipeline: @pipeline %>
+  </div>
+</div>

@@ -46,6 +46,6 @@ class AiProvidersController < ApplicationController
   end
 
   def ai_provider_params
-    params.require(:ai_provider).permit(:name, :provider_type, :api_key, :model_name, :active, :settings)
+    params.require(:ai_provider).permit(:name, :model, :api_key_encrypted, :active, :default)
   end
 end

@@ -1,0 +1,93 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <div class="flex items-center space-x-3">
+          <%= link_to ai_providers_path, class: "text-gray-400 hover:text-gray-500" do %>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          <% end %>
+          <h1 class="text-2xl font-semibold text-gray-900"><%= @ai_provider.name.capitalize %></h1>
+          <% if @ai_provider.default? %>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              Default
+            </span>
+          <% end %>
+          <% if @ai_provider.active? %>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              Active
+            </span>
+          <% else %>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+              Inactive
+            </span>
+          <% end %>
+        </div>
+        <p class="mt-1 text-sm text-gray-600">AI provider configuration</p>
+      </div>
+      <div class="flex space-x-2">
+        <%= link_to "Edit", edit_ai_provider_path(@ai_provider), class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+        <%= button_to "Delete", ai_provider_path(@ai_provider), method: :delete, data: { turbo_confirm: "Are you sure you want to delete this provider?" }, class: "px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 hover:bg-red-50" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Provider Details -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Configuration</h3>
+        <dl class="space-y-4">
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Provider</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @ai_provider.name.capitalize %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Model</dt>
+            <dd class="mt-1 text-sm text-gray-900 font-mono"><%= @ai_provider.model || "Not specified" %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">API Key</dt>
+            <dd class="mt-1 text-sm text-gray-900 font-mono">
+              <% if @ai_provider.api_key_encrypted.present? %>
+                ********<%= @ai_provider.api_key_encrypted.last(4) rescue "****" %>
+              <% else %>
+                <span class="text-red-500">Not configured</span>
+              <% end %>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Status</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @ai_provider.active? ? "Active" : "Inactive" %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Default Provider</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @ai_provider.default? ? "Yes" : "No" %></dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Usage Info -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Usage</h3>
+        <div class="prose prose-sm text-gray-600">
+          <p>This provider is used for:</p>
+          <ul class="mt-2 space-y-1 text-sm text-gray-600">
+            <li>Note summarization</li>
+            <li>Email drafting</li>
+            <li>Scope analysis</li>
+            <li>Transcript cleaning</li>
+            <% if @ai_provider.openai? %>
+              <li>Audio transcription (Whisper)</li>
+            <% end %>
+          </ul>
+          <% unless @ai_provider.active? %>
+            <p class="mt-4 text-amber-600">
+              This provider is currently inactive. Enable it to use AI features.
+            </p>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

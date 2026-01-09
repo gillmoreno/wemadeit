@@ -1,0 +1,104 @@
+<div class="py-6">
+  <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="flex justify-between items-start mb-6">
+      <div>
+        <div class="flex items-center space-x-3">
+          <%= link_to users_path, class: "text-gray-400 hover:text-gray-500" do %>
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+          <% end %>
+          <h1 class="text-2xl font-semibold text-gray-900"><%= @user.name %></h1>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+            <%= case @user.role
+                when 'admin' then 'bg-purple-100 text-purple-800'
+                when 'sales' then 'bg-green-100 text-green-800'
+                when 'project_manager' then 'bg-blue-100 text-blue-800'
+                when 'developer' then 'bg-orange-100 text-orange-800'
+                end %>">
+            <%= @user.role.humanize %>
+          </span>
+        </div>
+        <p class="mt-1 text-sm text-gray-600"><%= @user.email_address %></p>
+      </div>
+      <div class="flex space-x-2">
+        <%= link_to "Edit", edit_user_path(@user), class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+        <% unless @user == current_user %>
+          <%= button_to "Delete", user_path(@user), method: :delete, data: { turbo_confirm: "Are you sure you want to delete #{@user.name}?" }, class: "px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 hover:bg-red-50" %>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- User Details -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Details</h3>
+        <dl class="space-y-4">
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Full Name</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @user.name %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Email Address</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @user.email_address %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Role</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @user.role.humanize %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">Member Since</dt>
+            <dd class="mt-1 text-sm text-gray-900"><%= @user.created_at.strftime("%B %d, %Y") %></dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Activity Stats -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Activity</h3>
+        <dl class="space-y-4">
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-500">Assigned Deals</dt>
+            <dd class="text-sm font-medium text-gray-900"><%= @user.assigned_deals.count %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-500">Managed Projects</dt>
+            <dd class="text-sm font-medium text-gray-900"><%= @user.managed_projects.count %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-500">Interactions</dt>
+            <dd class="text-sm font-medium text-gray-900"><%= @user.interactions.count %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-sm text-gray-500">Quotations Created</dt>
+            <dd class="text-sm font-medium text-gray-900"><%= @user.created_quotations.count %></dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Recent Sessions -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Sessions</h3>
+        <% if @recent_activity.any? %>
+          <ul class="space-y-3">
+            <% @recent_activity.each do |session| %>
+              <li class="text-sm">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-900 truncate" title="<%= session.user_agent %>">
+                    <%= session.user_agent&.truncate(30) || "Unknown device" %>
+                  </span>
+                </div>
+                <div class="text-xs text-gray-500">
+                  <%= session.ip_address || "Unknown IP" %> &bull; <%= time_ago_in_words(session.created_at) %> ago
+                </div>
+              </li>
+            <% end %>
+          </ul>
+        <% else %>
+          <p class="text-sm text-gray-500">No recent sessions</p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

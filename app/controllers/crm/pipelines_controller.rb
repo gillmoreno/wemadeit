@@ -52,7 +52,7 @@ module Crm
     end
 
     def pipeline_params
-      params.require(:pipeline).permit(:name, :default)
+      params.require(:pipeline).permit(:name, :description, :default)
     end
   end
 end

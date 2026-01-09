@@ -16,7 +16,7 @@ Rails.application.routes.draw do
       end
     end
     resources :pipelines do
-      resources :pipeline_stages, only: [:create, :update, :destroy]
+      resources :pipeline_stages, only: [:new, :create, :edit, :update, :destroy]
     end
     resources :interactions do
       member do

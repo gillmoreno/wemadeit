@@ -1,0 +1,52 @@
+<%= form_with model: ai_provider, class: "space-y-6" do |form| %>
+  <% if ai_provider.errors.any? %>
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+      <ul class="list-disc list-inside">
+        <% ai_provider.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Provider Configuration</h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :name, "Provider", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.select :name, [["Anthropic (Claude)", "anthropic"], ["OpenAI (GPT)", "openai"], ["Groq (Llama)", "groq"]], {}, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <div>
+        <%= form.label :model, "Model", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.text_field :model, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", placeholder: "e.g., claude-3-haiku-20240307" %>
+        <p class="mt-1 text-xs text-gray-500">The specific model to use (e.g., gpt-4o-mini, claude-3-haiku-20240307)</p>
+      </div>
+    </div>
+
+    <div>
+      <%= form.label :api_key_encrypted, "API Key", class: "block text-sm font-medium text-gray-700" %>
+      <%= form.text_field :api_key_encrypted, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 font-mono", placeholder: "sk-..." %>
+      <p class="mt-1 text-xs text-gray-500">Your API key will be encrypted and stored securely</p>
+    </div>
+
+    <div class="flex items-center space-x-6">
+      <div class="flex items-center">
+        <%= form.check_box :active, class: "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" %>
+        <%= form.label :active, "Active", class: "ml-2 text-sm text-gray-700" %>
+      </div>
+
+      <div class="flex items-center">
+        <%= form.check_box :default, class: "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" %>
+        <%= form.label :default, "Set as default", class: "ml-2 text-sm text-gray-700" %>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500">Only one provider can be the default. Setting this as default will unset others.</p>
+  </div>
+
+  <div class="flex justify-end space-x-3">
+    <%= link_to "Cancel", ai_providers_path, class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+    <%= form.submit ai_provider.persisted? ? "Update Provider" : "Create Provider", class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 cursor-pointer" %>
+  </div>
+<% end %>
