@@ -87,9 +87,12 @@
                     -
                   <% end %>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                  <%= link_to "View", quotation_path(quotation), class: "text-blue-600 hover:text-blue-900" %>
-                  <%= link_to "Edit", edit_quotation_path(quotation), class: "text-gray-600 hover:text-gray-900" %>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <div class="flex justify-end space-x-2">
+                    <%= link_to "View", quotation_path(quotation), class: "inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" %>
+                    <%= link_to "Edit", edit_quotation_path(quotation), class: "inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" %>
+                    <%= button_to "Delete", quotation_path(quotation), method: :delete, data: { turbo_confirm: "Are you sure you want to delete quotation #{quotation.number}?" }, class: "inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50" %>
+                  </div>
                 </td>
               </tr>
             <% end %>

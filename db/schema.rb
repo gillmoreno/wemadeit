@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_01_08_170321) do
+ActiveRecord::Schema[8.1].define(version: 2026_01_13_171025) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -73,12 +73,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_08_170321) do
     t.bigint "assigned_to_id", null: false
     t.bigint "contact_id", null: false
     t.datetime "created_at", null: false
+    t.bigint "created_by_id"
     t.string "currency"
+    t.text "description"
     t.date "expected_close_date"
     t.text "lost_reason"
     t.text "notes"
     t.bigint "organization_id", null: false
     t.bigint "pipeline_stage_id", null: false
+    t.integer "probability"
     t.string "source"
     t.integer "status"
     t.string "title"
@@ -86,6 +89,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_08_170321) do
     t.decimal "value"
     t.index ["assigned_to_id"], name: "index_deals_on_assigned_to_id"
     t.index ["contact_id"], name: "index_deals_on_contact_id"
+    t.index ["created_by_id"], name: "index_deals_on_created_by_id"
     t.index ["organization_id"], name: "index_deals_on_organization_id"
     t.index ["pipeline_stage_id"], name: "index_deals_on_pipeline_stage_id"
   end
@@ -339,6 +343,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_08_170321) do
   add_foreign_key "deals", "organizations"
   add_foreign_key "deals", "pipeline_stages"
   add_foreign_key "deals", "users", column: "assigned_to_id"
+  add_foreign_key "deals", "users", column: "created_by_id"
   add_foreign_key "interactions", "contacts"
   add_foreign_key "interactions", "deals"
   add_foreign_key "interactions", "organizations"

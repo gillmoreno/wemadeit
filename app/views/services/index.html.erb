@@ -73,9 +73,11 @@
                       </span>
                     <% end %>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    <%= link_to "Edit", edit_service_path(service), class: "text-blue-600 hover:text-blue-900" %>
-                    <%= button_to "Deactivate", service_path(service), method: :delete, data: { turbo_confirm: "Are you sure you want to deactivate this service?" }, class: "text-red-600 hover:text-red-900" %>
+                  <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div class="flex justify-end space-x-2">
+                      <%= link_to "Edit", edit_service_path(service), class: "inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" %>
+                      <%= button_to "Deactivate", service_path(service), method: :delete, data: { turbo_confirm: "Are you sure you want to deactivate this service?" }, class: "inline-flex items-center px-3 py-1.5 border border-red-300 text-xs font-medium rounded-md text-red-700 bg-white hover:bg-red-50" %>
+                    </div>
                   </td>
                 </tr>
               <% end %>
