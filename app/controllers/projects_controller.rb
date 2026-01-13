@@ -34,10 +34,7 @@ class ProjectsController < ApplicationController
         board.task_columns.create!(name: col_name, position: idx)
       end
 
-      respond_to do |format|
-        format.html { redirect_to project_path(@project), notice: "Project was successfully created." }
-        format.turbo_stream
-      end
+      redirect_to project_path(@project), notice: "Project was successfully created."
     else
       render :new, status: :unprocessable_entity
     end
@@ -45,10 +42,7 @@ class ProjectsController < ApplicationController
 
   def update
     if @project.update(project_params)
-      respond_to do |format|
-        format.html { redirect_to project_path(@project), notice: "Project was successfully updated." }
-        format.turbo_stream
-      end
+      redirect_to project_path(@project), notice: "Project was successfully updated."
     else
       render :edit, status: :unprocessable_entity
     end
@@ -56,10 +50,7 @@ class ProjectsController < ApplicationController
 
   def destroy
     @project.destroy
-    respond_to do |format|
-      format.html { redirect_to projects_path, notice: "Project was successfully deleted." }
-      format.turbo_stream
-    end
+    redirect_to projects_path, notice: "Project was successfully deleted."
   end
 
   def activate
