@@ -20,6 +20,7 @@ services:
       - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
+    command: bash -c "rm -f tmp/pids/server.pid && bin/rails server -b 0.0.0.0"
 
   # Tailwind CSS watcher
   css:

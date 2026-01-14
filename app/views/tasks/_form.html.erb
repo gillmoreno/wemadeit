@@ -1,0 +1,91 @@
+<%= form_with model: task, class: "space-y-6" do |form| %>
+  <% if task.errors.any? %>
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+      <ul class="list-disc list-inside">
+        <% task.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <!-- Task Details -->
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Task Details</h3>
+
+    <div>
+      <%= form.label :title, class: "block text-sm font-medium text-gray-700" %>
+      <%= form.text_field :title, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true, placeholder: "Enter task title" %>
+    </div>
+
+    <div>
+      <%= form.label :description, class: "block text-sm font-medium text-gray-700" %>
+      <%= form.text_area :description, rows: 4, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", placeholder: "Describe the task..." %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :task_column_id, "Column", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.collection_select :task_column_id, @columns, :id, :name, { prompt: "Select column" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true %>
+      </div>
+
+      <div>
+        <%= form.label :priority, class: "block text-sm font-medium text-gray-700" %>
+        <%= form.select :priority, Task.priorities.keys.map { |p| [p.humanize, p] }, { include_blank: "Select priority" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assignment & Timeline -->
+  <div class="bg-white shadow rounded-lg p-6 space-y-6">
+    <h3 class="text-lg font-medium text-gray-900">Assignment & Timeline</h3>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :assigned_to_id, "Assign to", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.collection_select :assigned_to_id, User.order(:name), :id, :name, { include_blank: "Unassigned" }, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+
+      <div>
+        <%= form.label :due_date, class: "block text-sm font-medium text-gray-700" %>
+        <%= form.date_field :due_date, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <%= form.label :estimated_hours, "Estimated Hours", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.number_field :estimated_hours, min: 0, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", placeholder: "0" %>
+      </div>
+
+      <div>
+        <%= form.label :actual_hours, "Actual Hours", class: "block text-sm font-medium text-gray-700" %>
+        <%= form.number_field :actual_hours, min: 0, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", placeholder: "0" %>
+      </div>
+    </div>
+  </div>
+
+  <% if @labels&.any? %>
+    <!-- Labels -->
+    <div class="bg-white shadow rounded-lg p-6 space-y-6">
+      <h3 class="text-lg font-medium text-gray-900">Labels</h3>
+
+      <div class="flex flex-wrap gap-3">
+        <% @labels.each do |label| %>
+          <label class="inline-flex items-center">
+            <%= form.check_box :label_ids, { multiple: true, class: "rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500" }, label.id, nil %>
+            <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium text-white" style="background-color: <%= label.color %>;">
+              <%= label.name %>
+            </span>
+          </label>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Submit -->
+  <div class="flex justify-end space-x-3">
+    <%= link_to "Cancel", @back_path || tasks_path, class: "px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50" %>
+    <%= form.submit task.persisted? ? "Update Task" : "Create Task", class: "px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 cursor-pointer" %>
+  </div>
+<% end %>
