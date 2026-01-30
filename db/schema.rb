@@ -11,9 +11,6 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
-  # These are extensions that must be enabled in order to support this database
-  enable_extension "pg_catalog.plpgsql"
-
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -49,7 +46,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.boolean "default"
     t.string "model"
     t.string "name"
-    t.jsonb "settings"
+    t.json "settings"
     t.datetime "updated_at", null: false
   end
 
@@ -62,7 +59,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.string "linkedin_url"
     t.string "mobile"
     t.text "notes"
-    t.bigint "organization_id", null: false
+    t.integer "organization_id", null: false
     t.string "phone"
     t.boolean "primary_contact"
     t.datetime "updated_at", null: false
@@ -70,17 +67,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
   end
 
   create_table "deals", force: :cascade do |t|
-    t.bigint "assigned_to_id", null: false
-    t.bigint "contact_id", null: false
+    t.integer "assigned_to_id", null: false
+    t.integer "contact_id", null: false
     t.datetime "created_at", null: false
-    t.bigint "created_by_id"
+    t.integer "created_by_id"
     t.string "currency"
     t.text "description"
     t.date "expected_close_date"
     t.text "lost_reason"
     t.text "notes"
-    t.bigint "organization_id", null: false
-    t.bigint "pipeline_stage_id", null: false
+    t.integer "organization_id", null: false
+    t.integer "pipeline_stage_id", null: false
     t.integer "probability"
     t.string "source"
     t.integer "status"
@@ -97,22 +94,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
   create_table "interactions", force: :cascade do |t|
     t.text "body"
     t.text "cleaned_transcript"
-    t.bigint "contact_id"
+    t.integer "contact_id"
     t.datetime "created_at", null: false
-    t.bigint "deal_id"
+    t.integer "deal_id"
     t.integer "duration_minutes"
     t.boolean "follow_up_completed"
     t.datetime "follow_up_date"
     t.text "follow_up_notes"
     t.integer "interaction_type"
     t.datetime "occurred_at"
-    t.bigint "organization_id"
+    t.integer "organization_id"
     t.string "subject"
     t.text "transcript"
     t.string "transcription_language", default: "it"
     t.integer "transcription_status", default: 0
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.integer "user_id", null: false
     t.index ["contact_id"], name: "index_interactions_on_contact_id"
     t.index ["deal_id"], name: "index_interactions_on_deal_id"
     t.index ["organization_id"], name: "index_interactions_on_organization_id"
@@ -128,11 +125,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
 
   create_table "notes", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "notable_id", null: false
+    t.integer "notable_id", null: false
     t.string "notable_type", null: false
     t.string "title"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.integer "user_id", null: false
     t.index ["notable_type", "notable_id"], name: "index_notes_on_notable"
     t.index ["user_id"], name: "index_notes_on_user_id"
   end
@@ -157,7 +154,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.string "color"
     t.datetime "created_at", null: false
     t.string "name"
-    t.bigint "pipeline_id", null: false
+    t.integer "pipeline_id", null: false
     t.integer "position"
     t.float "probability"
     t.datetime "updated_at", null: false
@@ -174,10 +171,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
 
   create_table "project_members", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "project_id", null: false
+    t.integer "project_id", null: false
     t.string "role"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.integer "user_id", null: false
     t.index ["project_id", "user_id"], name: "index_project_members_on_project_id_and_user_id", unique: true
     t.index ["project_id"], name: "index_project_members_on_project_id"
     t.index ["user_id"], name: "index_project_members_on_user_id"
@@ -189,10 +186,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.string "code"
     t.datetime "created_at", null: false
     t.string "currency"
-    t.bigint "deal_id", null: false
+    t.integer "deal_id", null: false
     t.text "description"
     t.string "name"
-    t.bigint "project_manager_id"
+    t.integer "project_manager_id"
     t.integer "project_type"
     t.date "start_date"
     t.integer "status"
@@ -209,8 +206,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.string "name"
     t.integer "position"
     t.decimal "quantity"
-    t.bigint "quotation_id", null: false
-    t.bigint "service_id"
+    t.integer "quotation_id", null: false
+    t.integer "service_id"
     t.decimal "unit_price"
     t.string "unit_type"
     t.datetime "updated_at", null: false
@@ -220,9 +217,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
 
   create_table "quotations", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "created_by_id", null: false
+    t.integer "created_by_id", null: false
     t.string "currency", default: "EUR"
-    t.bigint "deal_id", null: false
+    t.integer "deal_id", null: false
     t.decimal "discount_amount", precision: 12, scale: 2, default: "0.0"
     t.text "introduction"
     t.string "number", null: false
@@ -260,13 +257,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.string "ip_address"
     t.datetime "updated_at", null: false
     t.string "user_agent"
-    t.bigint "user_id", null: false
+    t.integer "user_id", null: false
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
   create_table "signatures", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "quotation_id", null: false
+    t.integer "quotation_id", null: false
     t.text "signature_data"
     t.string "signature_type"
     t.datetime "signed_at"
@@ -282,7 +279,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.datetime "created_at", null: false
     t.string "name"
     t.integer "position"
-    t.bigint "project_id", null: false
+    t.integer "project_id", null: false
     t.datetime "updated_at", null: false
     t.index ["project_id"], name: "index_task_boards_on_project_id"
   end
@@ -292,7 +289,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
     t.datetime "created_at", null: false
     t.string "name"
     t.integer "position"
-    t.bigint "task_board_id", null: false
+    t.integer "task_board_id", null: false
     t.datetime "updated_at", null: false
     t.integer "wip_limit"
     t.index ["task_board_id"], name: "index_task_columns_on_task_board_id"
@@ -300,8 +297,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
 
   create_table "task_labels", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "label_id", null: false
-    t.bigint "task_id", null: false
+    t.integer "label_id", null: false
+    t.integer "task_id", null: false
     t.datetime "updated_at", null: false
     t.index ["label_id"], name: "index_task_labels_on_label_id"
     t.index ["task_id", "label_id"], name: "index_task_labels_on_task_id_and_label_id", unique: true
@@ -310,15 +307,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_01_14_174927) do
 
   create_table "tasks", force: :cascade do |t|
     t.integer "actual_hours"
-    t.bigint "assigned_to_id"
+    t.integer "assigned_to_id"
     t.datetime "created_at", null: false
-    t.bigint "created_by_id", null: false
+    t.integer "created_by_id", null: false
     t.text "description"
     t.date "due_date"
     t.integer "estimated_hours"
     t.integer "position"
     t.integer "priority"
-    t.bigint "task_column_id", null: false
+    t.integer "task_column_id", null: false
     t.string "title"
     t.datetime "updated_at", null: false
     t.index ["assigned_to_id"], name: "index_tasks_on_assigned_to_id"

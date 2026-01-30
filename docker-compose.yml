@@ -4,14 +4,14 @@ services:
     build: .
     container_name: wemadeit-web
     ports:
-      - "3002:3000"
+      - "3019:80"
     env_file:
       - .env.production
     volumes:
       - storage_data:/rails/storage
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/up"]
+      test: ["CMD", "curl", "-f", "http://localhost:80/up"]
       interval: 30s
       timeout: 10s
       retries: 3

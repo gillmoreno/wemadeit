@@ -6,7 +6,7 @@ class CreateAiProviders < ActiveRecord::Migration[8.1]
       t.string :model
       t.boolean :active
       t.boolean :default
-      t.jsonb :settings
+      t.json :settings
 
       t.timestamps
     end
