@@ -5,7 +5,7 @@ Project management and CRM system for a software house. Built with Rails 8.1, Ho
 
 ## Tech Stack
 - Ruby 3.4.7, Rails 8.1.1
-- PostgreSQL (multi-database: primary, cache, queue, cable)
+- SQLite 3 (WAL mode, multi-database: primary, cache, queue, cable)
 - Hotwire (Turbo + Stimulus)
 - Tailwind CSS
 - Solid Queue (background jobs)
@@ -117,6 +117,12 @@ bundle audit                 # Dependency vulnerabilities
 - Auto-registered from `controllers/`
 
 ## Database Conventions
+
+### SQLite Configuration
+- Rails 8.1 auto-configures: WAL mode, synchronous=NORMAL, mmap_size=128MB, foreign_keys=ON
+- `cache_size: -64000` (64MB) set via `pragmas:` in database.yml
+- `timeout: 5000` configures busy_handler_timeout for write contention
+- No additional PRAGMA tuning needed
 
 ### Migrations
 - Use `references` for foreign keys
