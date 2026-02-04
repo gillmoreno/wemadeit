@@ -8,7 +8,7 @@ services:
     env_file:
       - .env.production
     volumes:
-      - storage_data:/rails/storage
+      - ./storage:/rails/storage
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/up"]
@@ -25,12 +25,10 @@ services:
     env_file:
       - .env.production
     volumes:
-      - storage_data:/rails/storage
+      - ./storage:/rails/storage
     restart: unless-stopped
     depends_on:
       web:
         condition: service_healthy
 
-volumes:
-  storage_data:
-    driver: local
+volumes: {}

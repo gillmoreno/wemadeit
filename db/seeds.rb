@@ -50,7 +50,7 @@ end
 
 puts "Created #{Label.count} labels"
 
-# Create admin user (only in development/test)
+# Create default users in development/test (and optionally production with env flag)
 if Rails.env.development? || Rails.env.test?
   admin = User.find_or_create_by!(email_address: "admin@wemadeit.dev") do |user|
     user.password = "password123"
@@ -78,4 +78,18 @@ if Rails.env.development? || Rails.env.test?
 
   puts "Created #{User.count} users"
   puts "Admin login: admin@wemadeit.dev / password123"
+end
+
+if ENV["SEED_PROD_ADMIN"] == "true"
+  admin_email = ENV.fetch("SEED_PROD_ADMIN_EMAIL", "admin@wemadeit.dev")
+  admin_password = ENV.fetch("SEED_PROD_ADMIN_PASSWORD", "password123")
+  admin_name = ENV.fetch("SEED_PROD_ADMIN_NAME", "Admin User")
+
+  User.find_or_create_by!(email_address: admin_email) do |user|
+    user.password = admin_password
+    user.name = admin_name
+    user.role = :admin
+  end
+
+  puts "Created production admin user: #{admin_email}"
 end
