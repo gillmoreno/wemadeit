@@ -44,7 +44,7 @@ npm run dev
 ```
 
 Env:
-- `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8080`)
+- `NEXT_PUBLIC_API_URL` (optional; in the browser it defaults to same-origin so `/api/*` works behind a reverse proxy)
 
 API:
 - Health: `GET /api/health`
@@ -55,6 +55,10 @@ Auth:
 - Most endpoints require `Authorization: Bearer <token>`.
 - Default dev login is seeded on first run:
   - `admin@wemadeit.local` / `admin`
+
+## Production (Docker)
+
+See `DEPLOYMENT.md`.
 
 ## Legacy Rails App
 

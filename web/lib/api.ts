@@ -181,7 +181,20 @@ export type AppState = {
   users: User[];
 };
 
-const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+function apiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  const v = (raw || '').trim();
+  if (v) return v.replace(/\/$/, '');
+
+  // Default to same-origin in the browser so production (nginx reverse proxy) works:
+  // fetch("/api/...") hits the current domain, and nginx proxies it to the Go API.
+  if (typeof window !== 'undefined') return '';
+
+  // Fallback for SSR/node (we currently use a fully client-side page, but keep this safe).
+  return 'http://localhost:8080';
+}
+
+const base = apiBase();
 
 type RequestOptions = RequestInit & { skipAuth?: boolean };
 

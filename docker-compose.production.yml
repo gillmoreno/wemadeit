@@ -1,0 +1,22 @@
+name: wemadeit-prod
+
+services:
+  wemadeit:
+    container_name: wemadeit
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    ports:
+      # Everything served by nginx (static frontend + /api reverse proxy).
+      - "8200:80"
+    volumes:
+      # Persistent app state.
+      - ./data:/data
+      - ./config:/config
+    environment:
+      # Only used on first run (when the DB has no users yet).
+      # Change these before first boot on a real server.
+      WEMADEIT_ADMIN_EMAIL: admin@wemadeit.local
+      WEMADEIT_ADMIN_PASSWORD: admin
+      WEMADEIT_ADMIN_NAME: Admin

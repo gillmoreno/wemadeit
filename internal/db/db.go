@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"wemadeit/internal/auth"
@@ -232,14 +233,31 @@ func (s *Store) SeedIfNeeded() error {
 	}
 	var seededUser models.User
 	if len(users) == 0 {
-		hash, err := auth.HashPassword("admin")
+		adminEmail := strings.TrimSpace(os.Getenv("WEMADEIT_ADMIN_EMAIL"))
+		if adminEmail == "" {
+			adminEmail = "admin@wemadeit.local"
+		} else {
+			adminEmail = strings.ToLower(adminEmail)
+		}
+
+		adminPassword := os.Getenv("WEMADEIT_ADMIN_PASSWORD")
+		if strings.TrimSpace(adminPassword) == "" {
+			adminPassword = "admin"
+		}
+
+		adminName := strings.TrimSpace(os.Getenv("WEMADEIT_ADMIN_NAME"))
+		if adminName == "" {
+			adminName = "Admin"
+		}
+
+		hash, err := auth.HashPassword(adminPassword)
 		if err != nil {
 			return err
 		}
 		seededUser = models.User{
 			ID:           newID(),
-			EmailAddress: "admin@wemadeit.local",
-			Name:         "Admin",
+			EmailAddress: adminEmail,
+			Name:         adminName,
 			Role:         models.RoleAdmin,
 			PasswordHash: hash,
 			CreatedAt:    now,

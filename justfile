@@ -297,3 +297,23 @@ logs:
 deploy-rails:
     cd legacy/rails && docker compose down
     cd legacy/rails && docker compose up --build -d
+
+# Production (single-container: nginx + Go API).
+prod-build:
+    docker build -f Dockerfile.production -t wemadeit:production .
+
+prod-up:
+    docker compose -f docker-compose.production.yml up -d --build
+
+prod-down:
+    docker compose -f docker-compose.production.yml down
+
+prod-logs:
+    docker compose -f docker-compose.production.yml logs -f --tail=200
+
+prod-shell:
+    docker compose -f docker-compose.production.yml exec wemadeit sh
+
+prod-restart:
+    docker compose -f docker-compose.production.yml down
+    docker compose -f docker-compose.production.yml up -d --build

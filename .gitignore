@@ -43,6 +43,12 @@
 .run/
 *.log
 
+# Production runtime (docker-compose bind mounts)
+/data/*
+!/data/.keep
+/config/*
+!/config/.keep
+
 # Local scratch
 new-deal.txt
 
