@@ -988,6 +988,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg := s.settings
 		s.mu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{
+			"theme":                          cfg.Theme,
 			"provider":                       cfg.Provider,
 			"model":                          cfg.Model,
 			"ollama_base_url":                cfg.OllamaBaseURL,
@@ -1005,6 +1006,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	case http.MethodPost:
 		var payload struct {
+			Theme                       string              `json:"theme"`
 			Provider                    config.ProviderType `json:"provider"`
 			Model                       string              `json:"model"`
 			OllamaBaseURL               string              `json:"ollama_base_url"`
@@ -1025,6 +1027,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.mu.Lock()
+		if strings.TrimSpace(payload.Theme) != "" {
+			s.settings.Theme = config.NormalizeTheme(payload.Theme)
+		}
 		if payload.Provider != "" {
 			s.settings.Provider = payload.Provider
 		}

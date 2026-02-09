@@ -402,6 +402,7 @@ export async function getSettings() {
 
 export async function updateSettings(payload: any) {
   const safePayload = {
+    theme: payload?.theme,
     provider: payload?.provider,
     model: payload?.model,
     ollama_base_url: payload?.ollama_base_url,

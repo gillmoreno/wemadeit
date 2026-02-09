@@ -20,6 +20,7 @@ const (
 )
 
 type Settings struct {
+	Theme                       string       `json:"theme"`
 	Provider                    ProviderType `json:"provider"`
 	OpenAIKey                   string       `json:"openai_key"`
 	AnthropicKey                string       `json:"anthropic_key"`
@@ -38,6 +39,7 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{
+		Theme:                       "sand",
 		Provider:                    ProviderOpenAI,
 		OpenAIKey:                   "",
 		AnthropicKey:                "",
@@ -52,6 +54,15 @@ func DefaultSettings() Settings {
 		OllamaOverallTimeoutSeconds: 180,
 		OllamaMaxAttempts:           5,
 		OllamaBackoffBaseMs:         0,
+	}
+}
+
+func NormalizeTheme(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "sand", "ocean", "forest", "graphite", "rose":
+		return strings.ToLower(strings.TrimSpace(v))
+	default:
+		return "sand"
 	}
 }
 
@@ -74,6 +85,7 @@ func Load(path string) (Settings, error) {
 		return Settings{}, err
 	}
 
+	cfg.Theme = NormalizeTheme(cfg.Theme)
 	if cfg.Provider == "" {
 		cfg.Provider = ProviderOpenAI
 	}

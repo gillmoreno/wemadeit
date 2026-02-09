@@ -9,23 +9,23 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Palatino', 'serif'],
-        body: ['Avenir Next', 'Segoe UI', 'Helvetica Neue', 'sans-serif']
+        display: ['var(--font-display)', 'serif'],
+        body: ['var(--font-body)', 'sans-serif']
       },
       colors: {
         sand: {
-          50: '#fef8f2',
-          100: '#faecde',
-          200: '#f3d9bd',
-          300: '#e9c29a',
-          400: '#dc9f68',
-          500: '#cf8445',
-          600: '#bb6b37',
-          700: '#9b542f',
-          800: '#7d4530',
-          900: '#653a2a'
+          50: 'rgb(var(--sand-50) / <alpha-value>)',
+          100: 'rgb(var(--sand-100) / <alpha-value>)',
+          200: 'rgb(var(--sand-200) / <alpha-value>)',
+          300: 'rgb(var(--sand-300) / <alpha-value>)',
+          400: 'rgb(var(--sand-400) / <alpha-value>)',
+          500: 'rgb(var(--sand-500) / <alpha-value>)',
+          600: 'rgb(var(--sand-600) / <alpha-value>)',
+          700: 'rgb(var(--sand-700) / <alpha-value>)',
+          800: 'rgb(var(--sand-800) / <alpha-value>)',
+          900: 'rgb(var(--sand-900) / <alpha-value>)'
         },
-        stoneink: '#1f1a16'
+        stoneink: 'rgb(var(--stoneink) / <alpha-value>)'
       },
       keyframes: {
         enter: {
@@ -45,4 +45,3 @@ const config: Config = {
 };
 
 export default config;
-

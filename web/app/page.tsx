@@ -45,6 +45,7 @@ const views = ['dashboard', 'pipelines', 'organizations', 'contacts', 'deals', '
 type View = (typeof views)[number];
 
 type AppSettings = {
+  theme?: string;
   provider?: string;
   model?: string;
   ollama_base_url?: string;
@@ -227,6 +228,11 @@ export default function HomePage() {
   useEffect(() => {
     void boot();
   }, []);
+
+  useEffect(() => {
+    const theme = (settings?.theme || 'sand').toLowerCase();
+    document.documentElement.dataset.theme = theme;
+  }, [settings?.theme]);
 
   useEffect(() => {
     if (!dealStageId && pipelineStages.length > 0) {
@@ -2465,6 +2471,20 @@ export default function HomePage() {
 
               {settings && (
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <label>
+                    <span className="field-label">Theme</span>
+                    <select
+                      className="field-input"
+                      value={settings.theme || 'sand'}
+                      onChange={(e) => setSettings((prev) => ({ ...(prev || {}), theme: e.target.value }))}
+                    >
+                      <option value="sand">Sand (default)</option>
+                      <option value="ocean">Ocean</option>
+                      <option value="forest">Forest</option>
+                      <option value="graphite">Graphite</option>
+                      <option value="rose">Rose</option>
+                    </select>
+                  </label>
                   <label>
                     <span className="field-label">Provider</span>
                     <select

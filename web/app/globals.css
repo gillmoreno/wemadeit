@@ -5,11 +5,95 @@
 @layer base {
   :root {
     color-scheme: light;
+
+    /* sand (default) */
+    --sand-50: 254 248 242;
+    --sand-100: 250 236 222;
+    --sand-200: 243 217 189;
+    --sand-300: 233 194 154;
+    --sand-400: 220 159 104;
+    --sand-500: 207 132 69;
+    --sand-600: 187 107 55;
+    --sand-700: 155 84 47;
+    --sand-800: 125 69 48;
+    --sand-900: 101 58 42;
+    --stoneink: 31 26 22;
+
+    --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino;
+    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
+  }
+
+  :root[data-theme='ocean'] {
+    --sand-50: 244 249 255;
+    --sand-100: 228 241 255;
+    --sand-200: 201 227 255;
+    --sand-300: 167 209 255;
+    --sand-400: 115 176 255;
+    --sand-500: 62 140 255;
+    --sand-600: 45 115 230;
+    --sand-700: 36 89 189;
+    --sand-800: 31 74 149;
+    --sand-900: 28 61 120;
+    --stoneink: 12 26 43;
+
+    --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino;
+    --font-body: "Gill Sans", "Avenir Next", "Segoe UI", "Helvetica Neue";
+  }
+
+  :root[data-theme='forest'] {
+    --sand-50: 244 251 246;
+    --sand-100: 227 245 232;
+    --sand-200: 198 232 208;
+    --sand-300: 155 214 176;
+    --sand-400: 105 190 135;
+    --sand-500: 58 162 95;
+    --sand-600: 47 138 81;
+    --sand-700: 39 111 67;
+    --sand-800: 33 90 55;
+    --sand-900: 29 75 48;
+    --stoneink: 19 32 24;
+
+    --font-display: Palatino, "Iowan Old Style", "Palatino Linotype";
+    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
+  }
+
+  :root[data-theme='graphite'] {
+    --sand-50: 247 247 248;
+    --sand-100: 236 236 240;
+    --sand-200: 214 215 221;
+    --sand-300: 185 187 196;
+    --sand-400: 145 147 161;
+    --sand-500: 110 113 132;
+    --sand-600: 88 91 107;
+    --sand-700: 63 66 80;
+    --sand-800: 42 45 56;
+    --sand-900: 31 34 43;
+    --stoneink: 15 17 21;
+
+    --font-display: "Avenir Next", "Helvetica Neue", "Segoe UI";
+    --font-body: Menlo, "SF Mono", ui-monospace, monospace;
+  }
+
+  :root[data-theme='rose'] {
+    --sand-50: 255 246 247;
+    --sand-100: 255 230 234;
+    --sand-200: 255 200 210;
+    --sand-300: 255 160 179;
+    --sand-400: 255 110 142;
+    --sand-500: 244 67 114;
+    --sand-600: 217 53 99;
+    --sand-700: 181 44 84;
+    --sand-800: 143 37 71;
+    --sand-900: 111 32 60;
+    --stoneink: 42 15 23;
+
+    --font-display: Didot, "Bodoni 72", "Iowan Old Style", Palatino;
+    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
   }
 
   html,
   body {
-    @apply min-h-full bg-[#fef8f2] text-stoneink;
+    @apply min-h-full bg-sand-50 text-stoneink;
   }
 
   body {
@@ -41,4 +125,3 @@
     @apply inline-flex items-center rounded-full border border-sand-300 bg-sand-100 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-sand-700;
   }
 }
-
