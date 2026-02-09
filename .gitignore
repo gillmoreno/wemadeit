@@ -4,38 +4,57 @@
 # belong in git's global ignore instead:
 # `$XDG_CONFIG_HOME/git/ignore` or `~/.config/git/ignore`
 
+# macOS
+.DS_Store
+
 # Ignore bundler config.
 /.bundle
 
 # Ignore all environment files.
 /.env*
 
-# Ignore all logfiles and tempfiles.
-/log/*
-/tmp/*
-!/log/.keep
-!/tmp/.keep
-
-# Ignore pidfiles, but keep the directory.
-/tmp/pids/*
-!/tmp/pids/
-!/tmp/pids/.keep
-
-# Ignore storage (uploaded files in development and any SQLite databases).
-/storage/*
-!/storage/.keep
-/tmp/storage/*
-!/tmp/storage/
-!/tmp/storage/.keep
-
-/public/assets
-
-# Ignore key files for decrypting credentials and more.
-/config/*.key
+# Legacy Rails (moved to legacy/rails)
+/legacy/rails/.bundle/
+/legacy/rails/.env*
+/legacy/rails/log/*
+!/legacy/rails/log/.keep
+/legacy/rails/tmp/*
+!/legacy/rails/tmp/.keep
+/legacy/rails/tmp/pids/*
+!/legacy/rails/tmp/pids/
+!/legacy/rails/tmp/pids/.keep
+/legacy/rails/tmp/storage/*
+!/legacy/rails/tmp/storage/
+!/legacy/rails/tmp/storage/.keep
+/legacy/rails/storage/*
+!/legacy/rails/storage/.keep
+/legacy/rails/public/assets
+/legacy/rails/config/*.key
+/legacy/rails/app/assets/builds/*
+!/legacy/rails/app/assets/builds/.keep
+/legacy/rails/vendor_legacy/
 
 
-/app/assets/builds/*
-!/app/assets/builds/.keep
+# Go build/test outputs
+*.out
+*.test
 
+# Local runtime helpers
+.run/
+*.log
+
+# Local scratch
+new-deal.txt
+
+# Next.js / Node (Go+Next refactor)
+/web/node_modules/
+/web/.next/
+/web/.next.bak-*/
+/web/out/
+/web/.turbo/
+/web/.vercel/
+/web/coverage/
+/web/.env*
+!/web/.env.example
 
 .DS_Store.env.production
