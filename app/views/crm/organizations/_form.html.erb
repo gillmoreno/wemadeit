@@ -1,4 +1,4 @@
-<%= form_with model: [:crm, organization], class: "space-y-6" do |form| %>
+<%= form_with model: [:crm, organization], class: "space-y-6", data: { controller: "voice-suggest" } do |form| %>
   <% if organization.errors.any? %>
     <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
       <ul class="list-disc list-inside">
@@ -11,35 +11,42 @@
 
   <div class="bg-white shadow rounded-lg p-6 space-y-6">
     <div>
-      <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-medium text-gray-900">Basic Information</h3>
+        <button type="button" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50" data-action="voice-suggest#toggle" data-voice-suggest-target="button">
+          Start voice fill
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-gray-500" data-voice-suggest-target="status">Use your voice to prefill the form, then review and edit before saving.</p>
+      <div class="hidden mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap" data-voice-suggest-target="transcript"></div>
 
       <div class="grid grid-cols-1 gap-6">
         <div>
           <%= form.label :name, class: "block text-sm font-medium text-gray-700" %>
-          <%= form.text_field :name, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true %>
+          <%= form.text_field :name, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", required: true, data: { "voice-suggest-target": "name" } %>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <%= form.label :industry, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.text_field :industry, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.text_field :industry, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "industry" } %>
           </div>
 
           <div>
             <%= form.label :website, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.url_field :website, placeholder: "https://", class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.url_field :website, placeholder: "https://", class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "website" } %>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <%= form.label :email, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.email_field :email, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.email_field :email, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "email" } %>
           </div>
 
           <div>
             <%= form.label :phone, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.telephone_field :phone, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.telephone_field :phone, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "phone" } %>
           </div>
         </div>
       </div>
@@ -51,18 +58,18 @@
       <div class="grid grid-cols-1 gap-6">
         <div>
           <%= form.label :address, class: "block text-sm font-medium text-gray-700" %>
-          <%= form.text_area :address, rows: 2, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+          <%= form.text_area :address, rows: 2, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "address" } %>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <%= form.label :city, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.text_field :city, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.text_field :city, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "city" } %>
           </div>
 
           <div>
             <%= form.label :country, class: "block text-sm font-medium text-gray-700" %>
-            <%= form.text_field :country, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+            <%= form.text_field :country, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "country" } %>
           </div>
         </div>
       </div>
@@ -71,7 +78,7 @@
     <div class="border-t border-gray-200 pt-6">
       <div>
         <%= form.label :notes, class: "block text-sm font-medium text-gray-700" %>
-        <%= form.text_area :notes, rows: 3, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" %>
+        <%= form.text_area :notes, rows: 3, class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500", data: { "voice-suggest-target": "notes" } %>
       </div>
     </div>
   </div>

@@ -68,6 +68,23 @@ class AiController < ApplicationController
     end
   end
 
+  def suggest_organization
+    audio = params[:audio]
+    transcript = params[:transcript]
+
+    result = Ai::OrganizationSuggester.new(
+      audio_file: audio,
+      transcript: transcript
+    ).call
+
+    if result.success?
+      render json: { transcript: result.data[:transcript], fields: result.data[:fields] }
+    else
+      Rails.logger.warn("[AI][suggest_organization] #{result.error}")
+      render json: { error: result.error }, status: :unprocessable_entity
+    end
+  end
+
   private
 
   def ensure_ai_configured

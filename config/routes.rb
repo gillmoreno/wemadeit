@@ -70,11 +70,15 @@ Rails.application.routes.draw do
   post "ai/draft_email", to: "ai#draft_email"
   post "ai/analyze_scope", to: "ai#analyze_scope"
   post "ai/clean_transcript", to: "ai#clean_transcript"
+  post "ai/suggest_organization", to: "ai#suggest_organization"
 
   # Admin
   resources :users
   resources :ai_providers
   resources :labels
+
+  # Account (self-service)
+  resource :account, only: [:edit, :update]
 
   # Health check
   get "up" => "rails/health#show", as: :rails_health_check

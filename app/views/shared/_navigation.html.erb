@@ -68,6 +68,7 @@
           </button>
           <div data-dropdown-target="menu" class="hidden absolute right-0 top-full mt-1 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
             <div class="py-1">
+              <%= link_to "Change password", edit_account_path, class: "block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" %>
               <%= button_to "Sign out", session_path, method: :delete, class: "block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" %>
             </div>
           </div>

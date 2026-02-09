@@ -47,6 +47,14 @@
             <dd class="mt-1 text-sm text-gray-900 font-mono"><%= @ai_provider.model || "Not specified" %></dd>
           </div>
           <div>
+            <dt class="text-sm font-medium text-gray-500">Base URL</dt>
+            <dd class="mt-1 text-sm text-gray-900 font-mono"><%= @ai_provider.base_url.presence || "Not specified" %></dd>
+          </div>
+          <div>
+            <dt class="text-sm font-medium text-gray-500">STT Model</dt>
+            <dd class="mt-1 text-sm text-gray-900 font-mono"><%= @ai_provider.stt_model.presence || "Not specified" %></dd>
+          </div>
+          <div>
             <dt class="text-sm font-medium text-gray-500">API Key</dt>
             <dd class="mt-1 text-sm text-gray-900 font-mono">
               <% if @ai_provider.api_key_encrypted.present? %>

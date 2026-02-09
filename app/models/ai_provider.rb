@@ -1,5 +1,6 @@
 class AiProvider < ApplicationRecord
   encrypts :api_key_encrypted
+  store_accessor :settings, :base_url, :stt_model
 
   validates :name, presence: true, inclusion: { in: %w[anthropic openai groq] }
 
