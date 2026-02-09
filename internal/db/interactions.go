@@ -100,3 +100,8 @@ func (s *Store) LoadInteractions() ([]models.Interaction, error) {
 	}
 	return out, rows.Err()
 }
+
+func (s *Store) DeleteInteraction(interactionID string) error {
+	_, err := s.DB.Exec(`DELETE FROM interactions WHERE id = ?;`, interactionID)
+	return err
+}

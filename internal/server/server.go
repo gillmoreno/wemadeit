@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -326,6 +328,22 @@ func (s *Server) handleOrganizations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, org)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteOrganization(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -364,6 +382,22 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, c)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteContact(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -433,6 +467,22 @@ func (s *Server) handleDeals(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, d)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteDeal(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -479,6 +529,22 @@ func (s *Server) handlePipelines(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, p)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeletePipeline(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -530,6 +596,22 @@ func (s *Server) handlePipelineStages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, st)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeletePipelineStage(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -579,6 +661,22 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, p)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteProject(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -625,6 +723,22 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, t)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteTask(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -697,6 +811,22 @@ func (s *Server) handleQuotations(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecalcQuotationTotals(q.ID)
 		writeJSON(w, http.StatusOK, q)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteQuotation(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -755,6 +885,30 @@ func (s *Server) handleQuotationItems(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.store.RecalcQuotationTotals(it.QuotationID)
 		writeJSON(w, http.StatusOK, it)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		affected := make(map[string]struct{})
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			qid, err := s.store.DeleteQuotationItem(id)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+			if strings.TrimSpace(qid) != "" {
+				affected[qid] = struct{}{}
+			}
+		}
+		for qid := range affected {
+			_ = s.store.RecalcQuotationTotals(qid)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -806,6 +960,22 @@ func (s *Server) handleInteractions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, i)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeleteInteraction(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}
@@ -929,7 +1099,7 @@ func errorResponse(message string) map[string]string {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -937,6 +1107,55 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func deleteIDsFromRequest(r *http.Request) ([]string, error) {
+	if r == nil {
+		return nil, errors.New("invalid request")
+	}
+	q := r.URL.Query()
+	if id := strings.TrimSpace(q.Get("id")); id != "" {
+		return []string{id}, nil
+	}
+	if idsRaw := strings.TrimSpace(q.Get("ids")); idsRaw != "" {
+		parts := strings.Split(idsRaw, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if v := strings.TrimSpace(p); v != "" {
+				out = append(out, v)
+			}
+		}
+		if len(out) == 0 {
+			return nil, errors.New("ids is empty")
+		}
+		return out, nil
+	}
+
+	var payload struct {
+		ID  string   `json:"id"`
+		IDs []string `json:"ids"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, errors.New("id or ids is required")
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(payload.ID) != "" {
+		return []string{payload.ID}, nil
+	}
+	out := make([]string, 0, len(payload.IDs))
+	for _, v := range payload.IDs {
+		if strings.TrimSpace(v) != "" {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil, errors.New("id or ids is required")
+	}
+	return out, nil
 }
 
 func newID() string {

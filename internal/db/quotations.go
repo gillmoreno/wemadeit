@@ -42,6 +42,28 @@ func (s *Store) SaveQuotation(q models.Quotation) error {
 	return err
 }
 
+func (s *Store) DeleteQuotation(quotationID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM quotation_items WHERE quotation_id = ?;`, quotationID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotations WHERE id = ?;`, quotationID); err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
+}
+
 func (s *Store) LoadQuotations() ([]models.Quotation, error) {
 	rows, err := s.DB.Query(`SELECT id, deal_id, created_by_user_id, number, title, introduction, terms_and_conditions, currency, status, subtotal, tax_rate, tax_amount, discount_amount, total, valid_until, version, public_token, created_at, updated_at FROM quotations ORDER BY created_at DESC;`)
 	if err != nil {
@@ -112,6 +134,34 @@ func (s *Store) SaveQuotationItem(it models.QuotationItem) error {
 		it.UpdatedAt.Unix(),
 	)
 	return err
+}
+
+func (s *Store) DeleteQuotationItem(itemID string) (string, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	quotationID := ""
+	if err = tx.QueryRow(`SELECT quotation_id FROM quotation_items WHERE id = ? LIMIT 1;`, itemID).Scan(&quotationID); err != nil {
+		if err == sql.ErrNoRows {
+			err = tx.Commit()
+			return "", err
+		}
+		return "", err
+	}
+
+	if _, err = tx.Exec(`DELETE FROM quotation_items WHERE id = ?;`, itemID); err != nil {
+		return "", err
+	}
+
+	err = tx.Commit()
+	return quotationID, err
 }
 
 func (s *Store) LoadQuotationItems() ([]models.QuotationItem, error) {

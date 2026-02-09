@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import {
   Contact,
   Deal,
@@ -23,6 +23,16 @@ import {
   createQuotation,
   createQuotationItem,
   createTask,
+  deleteContacts,
+  deleteDeals,
+  deleteInteractions,
+  deleteOrganizations,
+  deletePipelineStages,
+  deletePipelines,
+  deleteProjects,
+  deleteQuotationItems,
+  deleteQuotations,
+  deleteTasks,
   getMe,
   getSettings,
   getState,
@@ -61,6 +71,67 @@ function currency(amount: number, code: string) {
   } catch {
     return `${safe.toFixed(2)} ${c}`;
   }
+}
+
+type CrudKind =
+  | 'organization'
+  | 'contact'
+  | 'deal'
+  | 'pipeline'
+  | 'pipelineStage'
+  | 'project'
+  | 'task'
+  | 'quotation'
+  | 'quotationItem'
+  | 'interaction';
+
+type ContextMenuState = {
+  kind: CrudKind;
+  item: any;
+  x: number;
+  y: number;
+};
+
+type EditState = {
+  kind: CrudKind;
+  draft: any;
+};
+
+type ConfirmDeleteState = {
+  kind: CrudKind;
+  ids: string[];
+  label: string;
+};
+
+function isoToDateInput(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function dateInputToISO(date: string): string | undefined {
+  const v = (date || '').trim();
+  if (!v) return undefined;
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
+function isoToDatetimeLocal(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToISO(v: string): string | undefined {
+  const raw = (v || '').trim();
+  if (!raw) return undefined;
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) return undefined;
+  return d.toISOString();
 }
 
 export default function HomePage() {
@@ -147,6 +218,12 @@ export default function HomePage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
 
+  const [crudBusy, setCrudBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [edit, setEdit] = useState<EditState | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(null);
+
   useEffect(() => {
     void boot();
   }, []);
@@ -174,6 +251,39 @@ export default function HomePage() {
       setSelectedQuotationId(quotations[0].id);
     }
   }, [quotations, selectedQuotationId]);
+
+  useEffect(() => {
+    // Selection and context are view-scoped.
+    setSelectedIds([]);
+    setContextMenu(null);
+    setEdit(null);
+    setConfirmDelete(null);
+  }, [view]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        setEdit(null);
+        setConfirmDelete(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   async function boot() {
     setAuthError(null);
@@ -343,6 +453,188 @@ export default function HomePage() {
     });
     return map;
   }, [deals]);
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+
+  const kindLabels: Record<CrudKind, { singular: string; plural: string }> = {
+    organization: { singular: 'organization', plural: 'organizations' },
+    contact: { singular: 'contact', plural: 'contacts' },
+    deal: { singular: 'deal', plural: 'deals' },
+    pipeline: { singular: 'pipeline', plural: 'pipelines' },
+    pipelineStage: { singular: 'stage', plural: 'stages' },
+    project: { singular: 'project', plural: 'projects' },
+    task: { singular: 'task', plural: 'tasks' },
+    quotation: { singular: 'quotation', plural: 'quotations' },
+    quotationItem: { singular: 'quotation item', plural: 'quotation items' },
+    interaction: { singular: 'interaction', plural: 'interactions' }
+  };
+
+  function labelFor(kind: CrudKind, count: number) {
+    const label = kindLabels[kind];
+    if (count === 1) return label.singular;
+    return label.plural;
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
+  }
+
+  function selectAll(ids: string[], enabled: boolean) {
+    setSelectedIds(enabled ? ids : []);
+  }
+
+  function openContextMenu(kind: CrudKind, item: any, x: number, y: number) {
+    const menuWidth = 210;
+    const menuHeight = 92;
+    const maxX = typeof window !== 'undefined' ? window.innerWidth - menuWidth - 8 : x;
+    const maxY = typeof window !== 'undefined' ? window.innerHeight - menuHeight - 8 : y;
+    const clampedX = Math.max(8, Math.min(x, maxX));
+    const clampedY = Math.max(8, Math.min(y, maxY));
+    setContextMenu({ kind, item, x: clampedX, y: clampedY });
+  }
+
+  function onItemContextMenu(e: ReactMouseEvent, kind: CrudKind, item: any) {
+    e.preventDefault();
+    e.stopPropagation();
+    openContextMenu(kind, item, e.clientX, e.clientY);
+  }
+
+  function onItemActionsClick(e: ReactMouseEvent, kind: CrudKind, item: any) {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    openContextMenu(kind, item, rect.right, rect.bottom);
+  }
+
+  function startEdit(kind: CrudKind, item: any) {
+    setNotice(null);
+    setContextMenu(null);
+    setEdit({ kind, draft: { ...item } });
+  }
+
+  function askDelete(kind: CrudKind, ids: string[]) {
+    setNotice(null);
+    setContextMenu(null);
+    setConfirmDelete({
+      kind,
+      ids,
+      label: labelFor(kind, ids.length)
+    });
+  }
+
+  async function runDelete(kind: CrudKind, ids: string[]) {
+    if (crudBusy) return;
+    const clean = ids.map((id) => id.trim()).filter(Boolean);
+    if (clean.length === 0) return;
+    setCrudBusy(true);
+    setNotice(null);
+    try {
+      switch (kind) {
+        case 'organization':
+          await deleteOrganizations(clean);
+          break;
+        case 'contact':
+          await deleteContacts(clean);
+          break;
+        case 'deal':
+          await deleteDeals(clean);
+          break;
+        case 'pipeline':
+          await deletePipelines(clean);
+          break;
+        case 'pipelineStage':
+          await deletePipelineStages(clean);
+          break;
+        case 'project':
+          await deleteProjects(clean);
+          break;
+        case 'task':
+          await deleteTasks(clean);
+          break;
+        case 'quotation':
+          await deleteQuotations(clean);
+          break;
+        case 'quotationItem':
+          await deleteQuotationItems(clean);
+          break;
+        case 'interaction':
+          await deleteInteractions(clean);
+          break;
+        default:
+          break;
+      }
+      setConfirmDelete(null);
+      setSelectedIds([]);
+      await refresh();
+      setNotice(`${clean.length} ${labelFor(kind, clean.length)} deleted.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      setNotice(msg);
+    } finally {
+      setCrudBusy(false);
+    }
+  }
+
+  async function saveEdit() {
+    if (!edit || crudBusy) return;
+    setCrudBusy(true);
+    setNotice(null);
+    try {
+      switch (edit.kind) {
+        case 'organization':
+          await createOrganization(edit.draft as Organization);
+          break;
+        case 'contact':
+          await createContact(edit.draft as Contact);
+          break;
+        case 'deal':
+          await createDeal(edit.draft as Deal);
+          break;
+        case 'pipeline':
+          await createPipeline(edit.draft as Pipeline);
+          break;
+        case 'pipelineStage':
+          await createPipelineStage(edit.draft as PipelineStage);
+          break;
+        case 'project':
+          await createProject(edit.draft as Project);
+          break;
+        case 'task':
+          await createTask(edit.draft as Task);
+          break;
+        case 'quotation':
+          await createQuotation(edit.draft as Quotation);
+          break;
+        case 'quotationItem':
+          await createQuotationItem(edit.draft as QuotationItem);
+          break;
+        case 'interaction':
+          await createInteraction(edit.draft as Interaction);
+          break;
+        default:
+          break;
+      }
+      setEdit(null);
+      await refresh();
+      setNotice('Saved.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setNotice(msg);
+    } finally {
+      setCrudBusy(false);
+    }
+  }
+
+  function updateEditDraft(patch: Record<string, any>) {
+    setEdit((prev) => {
+      if (!prev) return prev;
+      return { ...prev, draft: { ...prev.draft, ...patch } };
+    });
+  }
 
   async function onCreateOrganization() {
     setNotice(null);
@@ -1006,7 +1298,11 @@ export default function HomePage() {
                       .slice()
                       .sort((a, b) => (a.position || 0) - (b.position || 0));
                     return (
-                      <div key={p.id} className="rounded-2xl border border-sand-200 bg-white p-5">
+                      <div
+                        key={p.id}
+                        className="rounded-2xl border border-sand-200 bg-white p-5"
+                        onContextMenu={(e) => onItemContextMenu(e, 'pipeline', p)}
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
                             <div className="text-lg font-semibold text-stone-900">{p.name}</div>
@@ -1015,14 +1311,34 @@ export default function HomePage() {
                           <div className="flex flex-wrap gap-2">
                             {p.default && <span className="pill">DEFAULT</span>}
                             <span className="pill">{stages.length} stages</span>
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'pipeline', p)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                           {stages.map((st) => (
-                            <div key={st.id} className="rounded-xl border border-sand-200 bg-sand-50 p-3">
+                            <div
+                              key={st.id}
+                              className="rounded-xl border border-sand-200 bg-sand-50 p-3"
+                              onContextMenu={(e) => onItemContextMenu(e, 'pipelineStage', st)}
+                            >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="font-semibold text-stone-900">{st.name}</div>
-                                <div className="h-4 w-4 rounded-full border border-sand-200" style={{ background: st.color || '#e9c29a' }} />
+                                <div className="flex items-start gap-2">
+                                  <div className="h-4 w-4 rounded-full border border-sand-200" style={{ background: st.color || '#e9c29a' }} />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => onItemActionsClick(e, 'pipelineStage', st)}
+                                    className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                  >
+                                    ...
+                                  </button>
+                                </div>
                               </div>
                               <div className="mt-2 flex flex-wrap gap-2 text-xs text-sand-700">
                                 <span className="pill">{st.probability || 0}%</span>
@@ -1071,13 +1387,55 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Organizations</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Organizations</h2>
+                  {organizations.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={organizations.length > 0 && organizations.every((o) => selectedSet.has(o.id))}
+                        onChange={(e) => selectAll(organizations.map((o) => o.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('organization', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {organizations.length === 0 && <div className="text-sm text-sand-700">No organizations yet.</div>}
                   {organizations.map((o) => (
-                    <div key={o.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                    <div
+                      key={o.id}
+                      className="rounded-xl border border-sand-200 bg-white p-4"
+                      onContextMenu={(e) => onItemContextMenu(e, 'organization', o)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <input type="checkbox" checked={selectedSet.has(o.id)} onChange={() => toggleSelected(o.id)} className="mt-1" />
+                        <div className="min-w-0 flex-1">
                           <div className="text-lg font-semibold text-stone-900">{o.name}</div>
                           <div className="mt-1 text-sm text-sand-700">{o.industry || 'No industry set.'}</div>
                           {o.website && (
@@ -1093,7 +1451,16 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
-                        <span className="pill">ORG</span>
+                        <div className="flex items-start gap-2">
+                          <span className="pill">ORG</span>
+                          <button
+                            type="button"
+                            onClick={(e) => onItemActionsClick(e, 'organization', o)}
+                            className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                          >
+                            ...
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1152,15 +1519,57 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Contacts</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Contacts</h2>
+                  {contacts.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={contacts.length > 0 && contacts.every((c) => selectedSet.has(c.id))}
+                        onChange={(e) => selectAll(contacts.map((c) => c.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('contact', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {contacts.length === 0 && <div className="text-sm text-sand-700">No contacts yet.</div>}
                   {contacts.map((c) => {
                     const org = orgById.get(c.organizationId);
                     return (
-                      <div key={c.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
+                      <div
+                        key={c.id}
+                        className="rounded-xl border border-sand-200 bg-white p-4"
+                        onContextMenu={(e) => onItemContextMenu(e, 'contact', c)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedSet.has(c.id)} onChange={() => toggleSelected(c.id)} className="mt-1" />
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">
                               {c.firstName} {c.lastName}
                             </div>
@@ -1173,9 +1582,16 @@ export default function HomePage() {
                               </div>
                             )}
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             {c.primaryContact && <span className="pill">PRIMARY</span>}
                             <span className="pill">CONTACT</span>
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'contact', c)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1277,7 +1693,44 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Deals</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Deals</h2>
+                  {deals.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={deals.length > 0 && deals.every((d) => selectedSet.has(d.id))}
+                        onChange={(e) => selectAll(deals.map((d) => d.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('deal', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {deals.length === 0 && <div className="text-sm text-sand-700">No deals yet.</div>}
                   {deals.map((d) => {
@@ -1285,19 +1738,31 @@ export default function HomePage() {
                     const contact = contactById.get(d.contactId);
                     const stage = stageById.get(d.pipelineStageId);
                     return (
-                      <div key={d.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
+                      <div
+                        key={d.id}
+                        className="rounded-xl border border-sand-200 bg-white p-4"
+                        onContextMenu={(e) => onItemContextMenu(e, 'deal', d)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedSet.has(d.id)} onChange={() => toggleSelected(d.id)} className="mt-1" />
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">{d.title}</div>
                             <div className="mt-1 text-sm text-sand-700">
                               {org?.name || 'Unknown org'}
                               {contact ? ` · ${contact.firstName} ${contact.lastName}` : ''}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{d.status}</span>
                             {stage && <span className="pill">{stage.name}</span>}
                             <span className="pill">{currency(d.value, d.currency)}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'deal', d)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                         <div className="mt-2 text-sm text-sand-700">Probability: {d.probability || 0}%</div>
@@ -1361,22 +1826,71 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Projects</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Projects</h2>
+                  {projects.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={projects.length > 0 && projects.every((p) => selectedSet.has(p.id))}
+                        onChange={(e) => selectAll(projects.map((p) => p.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('project', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {projects.length === 0 && <div className="text-sm text-sand-700">No projects yet.</div>}
                   {projects.map((p) => {
                     const deal = dealById.get(p.dealId);
                     return (
-                      <div key={p.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
+                      <div
+                        key={p.id}
+                        className="rounded-xl border border-sand-200 bg-white p-4"
+                        onContextMenu={(e) => onItemContextMenu(e, 'project', p)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedSet.has(p.id)} onChange={() => toggleSelected(p.id)} className="mt-1" />
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">{p.name}</div>
                             <div className="mt-1 text-sm text-sand-700">{deal?.title || 'Unknown deal'}</div>
                             {p.code && <div className="mt-2 pill">{p.code}</div>}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{p.status}</span>
                             <span className="pill">{currency(p.budget, p.currency)}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'project', p)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1450,21 +1964,70 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Tasks</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Tasks</h2>
+                  {tasks.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={tasks.length > 0 && tasks.every((t) => selectedSet.has(t.id))}
+                        onChange={(e) => selectAll(tasks.map((t) => t.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('task', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {tasks.length === 0 && <div className="text-sm text-sand-700">No tasks yet.</div>}
                   {tasks.map((t) => {
                     const project = projectById.get(t.projectId);
                     return (
-                      <div key={t.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
+                      <div
+                        key={t.id}
+                        className="rounded-xl border border-sand-200 bg-white p-4"
+                        onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedSet.has(t.id)} onChange={() => toggleSelected(t.id)} className="mt-1" />
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">{t.title}</div>
                             <div className="mt-1 text-sm text-sand-700">{project?.name || 'Unknown project'}</div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{t.status}</span>
                             <span className="pill">P{t.priority || 0}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'task', t)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1587,7 +2150,44 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '120ms' }}>
-                <h2 className="text-3xl text-sand-900">Quotations</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Quotations</h2>
+                  {quotations.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={quotations.length > 0 && quotations.every((q) => selectedSet.has(q.id))}
+                        onChange={(e) => selectAll(quotations.map((q) => q.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('quotation', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 space-y-3">
                   {quotations.length === 0 && <div className="text-sm text-sand-700">No quotations yet.</div>}
                   {quotations.map((q) => {
@@ -1603,9 +2203,17 @@ export default function HomePage() {
                           'w-full rounded-2xl border p-5 text-left transition',
                           selected ? 'border-sand-500 bg-sand-100' : 'border-sand-200 bg-white hover:bg-sand-50'
                         ].join(' ')}
+                        onContextMenu={(e) => onItemContextMenu(e, 'quotation', q)}
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedSet.has(q.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleSelected(q.id)}
+                            className="mt-1"
+                          />
+                          <div className="min-w-0 flex-1">
                             <div className="text-sm font-semibold text-sand-700">{q.number}</div>
                             <div className="mt-1 text-lg font-semibold text-stone-900">{q.title}</div>
                             <div className="mt-1 text-sm text-sand-700">
@@ -1613,9 +2221,19 @@ export default function HomePage() {
                               {deal ? ` · ${deal.title}` : ''}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{q.status}</span>
                             <span className="pill">{currency(q.total || 0, q.currency)}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onItemActionsClick(e, 'quotation', q);
+                              }}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
 
@@ -1628,10 +2246,27 @@ export default function HomePage() {
                         {selected && items.length > 0 && (
                           <div className="mt-4 grid gap-2">
                             {items.map((it) => (
-                              <div key={it.id} className="rounded-xl border border-sand-200 bg-white px-4 py-3 text-sm">
+                              <div
+                                key={it.id}
+                                className="rounded-xl border border-sand-200 bg-white px-4 py-3 text-sm"
+                                onContextMenu={(e) => onItemContextMenu(e, 'quotationItem', it)}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="font-semibold text-stone-900">{it.name}</div>
-                                  <div className="pill">{currency(it.lineTotal || 0, q.currency)}</div>
+                                  <div className="flex items-start gap-2">
+                                    <div className="pill">{currency(it.lineTotal || 0, q.currency)}</div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onItemActionsClick(e, 'quotationItem', it);
+                                      }}
+                                      className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                    >
+                                      ...
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="mt-1 text-xs text-sand-700">
                                   {it.quantity} {it.unitType || 'unit'} @ {currency(it.unitPrice || 0, q.currency)}
@@ -1726,7 +2361,44 @@ export default function HomePage() {
               </div>
 
               <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <h2 className="text-3xl text-sand-900">Interactions</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-3xl text-sand-900">Interactions</h2>
+                  {interactions.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-sand-700">
+                      <input
+                        type="checkbox"
+                        checked={interactions.length > 0 && interactions.every((i) => selectedSet.has(i.id))}
+                        onChange={(e) => selectAll(interactions.map((i) => i.id), e.target.checked)}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                    <div>
+                      Selected: <span className="font-semibold">{selectedIds.length}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => askDelete('interaction', selectedIds)}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                        disabled={crudBusy}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                        disabled={crudBusy}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-3">
                   {interactions.length === 0 && <div className="text-sm text-sand-700">No interactions yet.</div>}
                   {interactions.map((i) => {
@@ -1735,9 +2407,14 @@ export default function HomePage() {
                     const deal = dealById.get(i.dealId);
                     const when = i.occurredAt ? new Date(i.occurredAt).toLocaleString() : '';
                     return (
-                      <div key={i.id} className="rounded-2xl border border-sand-200 bg-white p-5">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
+                      <div
+                        key={i.id}
+                        className="rounded-2xl border border-sand-200 bg-white p-5"
+                        onContextMenu={(e) => onItemContextMenu(e, 'interaction', i)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedSet.has(i.id)} onChange={() => toggleSelected(i.id)} className="mt-1" />
+                          <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">{i.subject || '(No subject)'}</div>
                             <div className="mt-1 text-sm text-sand-700">
                               {org?.name || 'No org'}
@@ -1745,9 +2422,16 @@ export default function HomePage() {
                               {deal ? ` · ${deal.title}` : ''}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{i.interactionType}</span>
                             {when && <span className="pill">{when}</span>}
+                            <button
+                              type="button"
+                              onClick={(e) => onItemActionsClick(e, 'interaction', i)}
+                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              ...
+                            </button>
                           </div>
                         </div>
                         {i.body && <div className="mt-3 whitespace-pre-wrap text-sm text-stone-900">{i.body}</div>}
@@ -1873,6 +2557,827 @@ export default function HomePage() {
           )}
         </section>
       </div>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 w-52 overflow-hidden rounded-xl border border-sand-200 bg-white shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => startEdit(contextMenu.kind, contextMenu.item)}
+            className="w-full px-3 py-2 text-left text-sm font-semibold text-stone-900 hover:bg-sand-50"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => askDelete(contextMenu.kind, [String(contextMenu.item?.id || '')])}
+            className="w-full px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {edit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={() => setEdit(null)}>
+          <div className="panel w-full max-w-4xl p-6" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Edit</div>
+                <h3 className="text-2xl font-semibold text-stone-900">
+                  {kindLabels[edit.kind]?.singular ? kindLabels[edit.kind].singular.toUpperCase() : 'ITEM'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEdit(null)}
+                className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                disabled={crudBusy}
+              >
+                Close
+              </button>
+            </div>
+
+            {edit.kind === 'organization' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Industry</span>
+                  <input className="field-input" value={edit.draft.industry || ''} onChange={(e) => updateEditDraft({ industry: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Website</span>
+                  <input className="field-input" value={edit.draft.website || ''} onChange={(e) => updateEditDraft({ website: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Email</span>
+                  <input className="field-input" value={edit.draft.email || ''} onChange={(e) => updateEditDraft({ email: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Phone</span>
+                  <input className="field-input" value={edit.draft.phone || ''} onChange={(e) => updateEditDraft({ phone: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Billing Email</span>
+                  <input
+                    className="field-input"
+                    value={edit.draft.billingEmail || ''}
+                    onChange={(e) => updateEditDraft({ billingEmail: e.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Tax ID</span>
+                  <input className="field-input" value={edit.draft.taxId || ''} onChange={(e) => updateEditDraft({ taxId: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Address</span>
+                  <input className="field-input" value={edit.draft.address || ''} onChange={(e) => updateEditDraft({ address: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">City</span>
+                  <input className="field-input" value={edit.draft.city || ''} onChange={(e) => updateEditDraft({ city: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Country</span>
+                  <input className="field-input" value={edit.draft.country || ''} onChange={(e) => updateEditDraft({ country: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Notes</span>
+                  <textarea className="field-input" rows={4} value={edit.draft.notes || ''} onChange={(e) => updateEditDraft({ notes: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'contact' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Organization</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.organizationId || ''}
+                    onChange={(e) => updateEditDraft({ organizationId: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    {organizations.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">First Name</span>
+                  <input className="field-input" value={edit.draft.firstName || ''} onChange={(e) => updateEditDraft({ firstName: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Last Name</span>
+                  <input className="field-input" value={edit.draft.lastName || ''} onChange={(e) => updateEditDraft({ lastName: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Job Title</span>
+                  <input className="field-input" value={edit.draft.jobTitle || ''} onChange={(e) => updateEditDraft({ jobTitle: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Email</span>
+                  <input className="field-input" value={edit.draft.email || ''} onChange={(e) => updateEditDraft({ email: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Phone</span>
+                  <input className="field-input" value={edit.draft.phone || ''} onChange={(e) => updateEditDraft({ phone: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Mobile</span>
+                  <input className="field-input" value={edit.draft.mobile || ''} onChange={(e) => updateEditDraft({ mobile: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">LinkedIn URL</span>
+                  <input
+                    className="field-input"
+                    value={edit.draft.linkedinUrl || ''}
+                    onChange={(e) => updateEditDraft({ linkedinUrl: e.target.value })}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-sand-700">
+                  <input
+                    type="checkbox"
+                    checked={!!edit.draft.primaryContact}
+                    onChange={(e) => updateEditDraft({ primaryContact: e.target.checked })}
+                  />
+                  Primary contact
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Notes</span>
+                  <textarea className="field-input" rows={4} value={edit.draft.notes || ''} onChange={(e) => updateEditDraft({ notes: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'deal' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Title</span>
+                  <input className="field-input" value={edit.draft.title || ''} onChange={(e) => updateEditDraft({ title: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Organization</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.organizationId || ''}
+                    onChange={(e) => updateEditDraft({ organizationId: e.target.value, contactId: '' })}
+                  >
+                    <option value="">Select...</option>
+                    {organizations.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Contact</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.contactId || ''}
+                    onChange={(e) => updateEditDraft({ contactId: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    {contacts
+                      .filter((c) => !edit.draft.organizationId || c.organizationId === edit.draft.organizationId)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.firstName} {c.lastName}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Stage</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.pipelineStageId || ''}
+                    onChange={(e) => updateEditDraft({ pipelineStageId: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    {pipelineStages.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Status</span>
+                  <select className="field-input" value={edit.draft.status || 'open'} onChange={(e) => updateEditDraft({ status: e.target.value })}>
+                    <option value="open">open</option>
+                    <option value="won">won</option>
+                    <option value="lost">lost</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Value</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.value ?? 0)}
+                    onChange={(e) => updateEditDraft({ value: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Currency</span>
+                  <input className="field-input" value={edit.draft.currency || ''} onChange={(e) => updateEditDraft({ currency: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Probability (%)</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.probability ?? 0)}
+                    onChange={(e) => updateEditDraft({ probability: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Expected Close</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.expectedCloseAt)}
+                    onChange={(e) => updateEditDraft({ expectedCloseAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Source</span>
+                  <input className="field-input" value={edit.draft.source || ''} onChange={(e) => updateEditDraft({ source: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Description</span>
+                  <textarea
+                    className="field-input"
+                    rows={4}
+                    value={edit.draft.description || ''}
+                    onChange={(e) => updateEditDraft({ description: e.target.value })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Notes</span>
+                  <textarea className="field-input" rows={3} value={edit.draft.notes || ''} onChange={(e) => updateEditDraft({ notes: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Lost Reason</span>
+                  <input className="field-input" value={edit.draft.lostReason || ''} onChange={(e) => updateEditDraft({ lostReason: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'pipeline' && (
+              <div className="mt-6 grid gap-4">
+                <label>
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Description</span>
+                  <input
+                    className="field-input"
+                    value={edit.draft.description || ''}
+                    onChange={(e) => updateEditDraft({ description: e.target.value })}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm text-sand-700">
+                  <input type="checkbox" checked={!!edit.draft.default} onChange={(e) => updateEditDraft({ default: e.target.checked })} />
+                  Default pipeline
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'pipelineStage' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Pipeline</span>
+                  <select className="field-input" value={edit.draft.pipelineId || ''} onChange={(e) => updateEditDraft({ pipelineId: e.target.value })}>
+                    <option value="">Select...</option>
+                    {pipelines.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Color</span>
+                  <input className="field-input" type="color" value={edit.draft.color || '#CF8445'} onChange={(e) => updateEditDraft({ color: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Position</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.position ?? 0)}
+                    onChange={(e) => updateEditDraft({ position: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Probability (%)</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.probability ?? 0)}
+                    onChange={(e) => updateEditDraft({ probability: Number(e.target.value) || 0 })}
+                  />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'project' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Deal</span>
+                  <select className="field-input" value={edit.draft.dealId || ''} onChange={(e) => updateEditDraft({ dealId: e.target.value })}>
+                    <option value="">Select...</option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Code</span>
+                  <input className="field-input" value={edit.draft.code || ''} onChange={(e) => updateEditDraft({ code: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Status</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.status || 'active'}
+                    onChange={(e) => updateEditDraft({ status: e.target.value })}
+                  >
+                    <option value="active">active</option>
+                    <option value="completed">completed</option>
+                    <option value="support">support</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Budget</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.budget ?? 0)}
+                    onChange={(e) => updateEditDraft({ budget: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Currency</span>
+                  <input className="field-input" value={edit.draft.currency || ''} onChange={(e) => updateEditDraft({ currency: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Start Date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.startDate)}
+                    onChange={(e) => updateEditDraft({ startDate: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Target End Date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.targetEndDate)}
+                    onChange={(e) => updateEditDraft({ targetEndDate: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Actual End Date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.actualEndDate)}
+                    onChange={(e) => updateEditDraft({ actualEndDate: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Description</span>
+                  <textarea
+                    className="field-input"
+                    rows={4}
+                    value={edit.draft.description || ''}
+                    onChange={(e) => updateEditDraft({ description: e.target.value })}
+                  />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'task' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Project</span>
+                  <select className="field-input" value={edit.draft.projectId || ''} onChange={(e) => updateEditDraft({ projectId: e.target.value })}>
+                    <option value="">Select...</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Title</span>
+                  <input className="field-input" value={edit.draft.title || ''} onChange={(e) => updateEditDraft({ title: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Status</span>
+                  <select className="field-input" value={edit.draft.status || 'todo'} onChange={(e) => updateEditDraft({ status: e.target.value })}>
+                    <option value="todo">todo</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="blocked">blocked</option>
+                    <option value="done">done</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Priority</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.priority ?? 0)}
+                    onChange={(e) => updateEditDraft({ priority: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Due Date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.dueDate)}
+                    onChange={(e) => updateEditDraft({ dueDate: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Estimated Hours</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.estimatedHours ?? 0)}
+                    onChange={(e) => updateEditDraft({ estimatedHours: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Actual Hours</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.actualHours ?? 0)}
+                    onChange={(e) => updateEditDraft({ actualHours: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Description</span>
+                  <textarea
+                    className="field-input"
+                    rows={4}
+                    value={edit.draft.description || ''}
+                    onChange={(e) => updateEditDraft({ description: e.target.value })}
+                  />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'quotation' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Number</span>
+                  <input className="field-input" value={edit.draft.number || ''} disabled />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Deal</span>
+                  <select className="field-input" value={edit.draft.dealId || ''} onChange={(e) => updateEditDraft({ dealId: e.target.value })}>
+                    <option value="">Select...</option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Title</span>
+                  <input className="field-input" value={edit.draft.title || ''} onChange={(e) => updateEditDraft({ title: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Status</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.status || 'draft'}
+                    onChange={(e) => updateEditDraft({ status: e.target.value })}
+                  >
+                    <option value="draft">draft</option>
+                    <option value="sent">sent</option>
+                    <option value="viewed">viewed</option>
+                    <option value="accepted">accepted</option>
+                    <option value="declined">declined</option>
+                    <option value="expired">expired</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Currency</span>
+                  <input className="field-input" value={edit.draft.currency || ''} onChange={(e) => updateEditDraft({ currency: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Valid Until</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.validUntil)}
+                    onChange={(e) => updateEditDraft({ validUntil: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Tax Rate (%)</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.taxRate ?? 0)}
+                    onChange={(e) => updateEditDraft({ taxRate: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Discount Amount</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.discountAmount ?? 0)}
+                    onChange={(e) => updateEditDraft({ discountAmount: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Introduction</span>
+                  <textarea
+                    className="field-input"
+                    rows={4}
+                    value={edit.draft.introduction || ''}
+                    onChange={(e) => updateEditDraft({ introduction: e.target.value })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Terms</span>
+                  <textarea className="field-input" rows={4} value={edit.draft.terms || ''} onChange={(e) => updateEditDraft({ terms: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'quotationItem' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Quotation</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.quotationId || ''}
+                    onChange={(e) => updateEditDraft({ quotationId: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    {quotations.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.number} · {q.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Quantity</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.quantity ?? 1)}
+                    onChange={(e) => updateEditDraft({ quantity: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Unit Price</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.unitPrice ?? 0)}
+                    onChange={(e) => updateEditDraft({ unitPrice: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Unit Type</span>
+                  <input className="field-input" value={edit.draft.unitType || ''} onChange={(e) => updateEditDraft({ unitType: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Position</span>
+                  <input
+                    className="field-input"
+                    inputMode="numeric"
+                    value={String(edit.draft.position ?? 0)}
+                    onChange={(e) => updateEditDraft({ position: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Description</span>
+                  <textarea
+                    className="field-input"
+                    rows={4}
+                    value={edit.draft.description || ''}
+                    onChange={(e) => updateEditDraft({ description: e.target.value })}
+                  />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'interaction' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label>
+                  <span className="field-label">Type</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.interactionType || 'note'}
+                    onChange={(e) => updateEditDraft({ interactionType: e.target.value })}
+                  >
+                    <option value="note">note</option>
+                    <option value="call">call</option>
+                    <option value="email">email</option>
+                    <option value="meeting">meeting</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Occurred At</span>
+                  <input
+                    className="field-input"
+                    type="datetime-local"
+                    value={isoToDatetimeLocal(edit.draft.occurredAt)}
+                    onChange={(e) => updateEditDraft({ occurredAt: datetimeLocalToISO(e.target.value) })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Organization (optional)</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.organizationId || ''}
+                    onChange={(e) => updateEditDraft({ organizationId: e.target.value, contactId: '' })}
+                  >
+                    <option value="">None</option>
+                    {organizations.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Contact (optional)</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.contactId || ''}
+                    onChange={(e) => updateEditDraft({ contactId: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    {contacts
+                      .filter((c) => !edit.draft.organizationId || c.organizationId === edit.draft.organizationId)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.firstName} {c.lastName}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Deal (optional)</span>
+                  <select className="field-input" value={edit.draft.dealId || ''} onChange={(e) => updateEditDraft({ dealId: e.target.value })}>
+                    <option value="">None</option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Subject</span>
+                  <input className="field-input" value={edit.draft.subject || ''} onChange={(e) => updateEditDraft({ subject: e.target.value })} />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Body</span>
+                  <textarea className="field-input" rows={6} value={edit.draft.body || ''} onChange={(e) => updateEditDraft({ body: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            <div className="mt-8 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEdit(null)}
+                className="rounded-xl border border-sand-200 bg-white px-4 py-2 text-sm font-semibold text-sand-700 transition hover:bg-sand-50"
+                disabled={crudBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveEdit()}
+                className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={crudBusy}
+              >
+                {crudBusy ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          onMouseDown={() => setConfirmDelete(null)}
+        >
+          <div className="panel w-full max-w-lg p-6" onMouseDown={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-semibold text-stone-900">
+              Delete {confirmDelete.label}
+              {confirmDelete.ids.length > 1 ? '' : ''}?
+            </h3>
+            <p className="mt-2 text-sm text-sand-700">
+              This will permanently delete{' '}
+              <span className="font-semibold">
+                {confirmDelete.ids.length} {confirmDelete.label}
+              </span>
+              . This cannot be undone.
+            </p>
+
+            {confirmDelete.kind === 'organization' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting an organization also deletes its contacts, deals, projects, tasks, quotations, and related interactions.
+              </div>
+            )}
+            {confirmDelete.kind === 'contact' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting a contact also deletes its deals (and their projects, tasks, quotations) plus related interactions.
+              </div>
+            )}
+            {confirmDelete.kind === 'deal' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting a deal also deletes its projects, tasks, quotations, quotation items, and related interactions.
+              </div>
+            )}
+            {confirmDelete.kind === 'project' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting a project also deletes its tasks.
+              </div>
+            )}
+            {confirmDelete.kind === 'quotation' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting a quotation also deletes its quotation items.
+              </div>
+            )}
+            {confirmDelete.kind === 'pipelineStage' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deals in this stage will be moved to another stage (or become unassigned) before deletion.
+              </div>
+            )}
+            {confirmDelete.kind === 'pipeline' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Stages in this pipeline will be removed; deals will be moved to another pipeline&apos;s first stage (or become unassigned).
+              </div>
+            )}
+
+            <div className="mt-8 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="rounded-xl border border-sand-200 bg-white px-4 py-2 text-sm font-semibold text-sand-700 transition hover:bg-sand-50"
+                disabled={crudBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void runDelete(confirmDelete.kind, confirmDelete.ids)}
+                className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={crudBusy}
+              >
+                {crudBusy ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

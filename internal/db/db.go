@@ -494,6 +494,62 @@ func (s *Store) LoadOrganizations() ([]models.Organization, error) {
 	return orgs, rows.Err()
 }
 
+func (s *Store) DeleteOrganization(orgID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Delete interactions referencing contacts under this org.
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE contact_id IN (SELECT id FROM contacts WHERE organization_id = ?);`, orgID); err != nil {
+		return err
+	}
+	// Delete interactions referencing deals under this org.
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?);`, orgID); err != nil {
+		return err
+	}
+
+	// Delete tasks/projects under deals for this org.
+	if _, err = tx.Exec(`DELETE FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?));`, orgID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM projects WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?);`, orgID); err != nil {
+		return err
+	}
+
+	// Delete quotations/items under deals for this org.
+	if _, err = tx.Exec(`DELETE FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?));`, orgID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?);`, orgID); err != nil {
+		return err
+	}
+
+	// Delete interactions referencing the org directly.
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE organization_id = ?;`, orgID); err != nil {
+		return err
+	}
+
+	// Delete deals, contacts, org.
+	if _, err = tx.Exec(`DELETE FROM deals WHERE organization_id = ?;`, orgID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM contacts WHERE organization_id = ?;`, orgID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM organizations WHERE id = ?;`, orgID); err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
+}
+
 func (s *Store) SaveContact(c models.Contact) error {
 	primary := 0
 	if c.PrimaryContact {
@@ -555,6 +611,50 @@ func (s *Store) LoadContacts() ([]models.Contact, error) {
 		contacts = append(contacts, c)
 	}
 	return contacts, rows.Err()
+}
+
+func (s *Store) DeleteContact(contactID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Delete interactions referencing the contact directly.
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE contact_id = ?;`, contactID); err != nil {
+		return err
+	}
+
+	// Delete cascades under deals owned by this contact.
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?);`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?));`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM projects WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?);`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?));`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?);`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM deals WHERE contact_id = ?;`, contactID); err != nil {
+		return err
+	}
+
+	if _, err = tx.Exec(`DELETE FROM contacts WHERE id = ?;`, contactID); err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
 }
 
 func (s *Store) SaveDeal(d models.Deal) error {
@@ -629,6 +729,40 @@ func (s *Store) LoadDeals() ([]models.Deal, error) {
 		deals = append(deals, d)
 	}
 	return deals, rows.Err()
+}
+
+func (s *Store) DeleteDeal(dealID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM tasks WHERE project_id IN (SELECT id FROM projects WHERE deal_id = ?);`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM projects WHERE deal_id = ?;`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotation_items WHERE quotation_id IN (SELECT id FROM quotations WHERE deal_id = ?);`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id = ?;`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM interactions WHERE deal_id = ?;`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM deals WHERE id = ?;`, dealID); err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	return err
 }
 
 func (s *Store) SaveProject(p models.Project) error {
@@ -716,6 +850,27 @@ func (s *Store) LoadProjects() ([]models.Project, error) {
 	return projects, rows.Err()
 }
 
+func (s *Store) DeleteProject(projectID string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM tasks WHERE project_id = ?;`, projectID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM projects WHERE id = ?;`, projectID); err != nil {
+		return err
+	}
+	err = tx.Commit()
+	return err
+}
+
 func (s *Store) SaveTask(t models.Task) error {
 	dueUnix := int64(0)
 	if t.DueDate != nil {
@@ -778,6 +933,11 @@ func (s *Store) LoadTasks() ([]models.Task, error) {
 		tasks = append(tasks, t)
 	}
 	return tasks, rows.Err()
+}
+
+func (s *Store) DeleteTask(taskID string) error {
+	_, err := s.DB.Exec(`DELETE FROM tasks WHERE id = ?;`, taskID)
+	return err
 }
 
 func newID() string {

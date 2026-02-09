@@ -319,6 +319,83 @@ export async function createInteraction(interaction: Partial<Interaction>) {
   });
 }
 
+type DeleteResponse = { ok: boolean; deleted?: string[] };
+
+function normalizeIDs(ids: string[] | string): string[] {
+  if (Array.isArray(ids)) return ids;
+  return [ids];
+}
+
+export async function deleteOrganizations(ids: string[] | string) {
+  return request<DeleteResponse>('/api/organizations', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteContacts(ids: string[] | string) {
+  return request<DeleteResponse>('/api/contacts', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteDeals(ids: string[] | string) {
+  return request<DeleteResponse>('/api/deals', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deletePipelines(ids: string[] | string) {
+  return request<DeleteResponse>('/api/pipelines', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deletePipelineStages(ids: string[] | string) {
+  return request<DeleteResponse>('/api/pipeline_stages', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteProjects(ids: string[] | string) {
+  return request<DeleteResponse>('/api/projects', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteTasks(ids: string[] | string) {
+  return request<DeleteResponse>('/api/tasks', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteQuotations(ids: string[] | string) {
+  return request<DeleteResponse>('/api/quotations', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteQuotationItems(ids: string[] | string) {
+  return request<DeleteResponse>('/api/quotation_items', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteInteractions(ids: string[] | string) {
+  return request<DeleteResponse>('/api/interactions', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
 export async function getSettings() {
   return request<any>('/api/settings');
 }
