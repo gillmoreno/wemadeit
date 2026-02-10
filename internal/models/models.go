@@ -78,6 +78,33 @@ type Deal struct {
 	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
+type PaymentStatus string
+
+const (
+	PaymentPlanned PaymentStatus = "planned"
+	PaymentPaid    PaymentStatus = "paid"
+	PaymentVoid    PaymentStatus = "void"
+)
+
+type Payment struct {
+	ID       string        `json:"id"`
+	DealID   string        `json:"dealId"`
+	Title    string        `json:"title"`
+	Amount   float64       `json:"amount"`
+	Currency string        `json:"currency"`
+	Status   PaymentStatus `json:"status"`
+	DueAt    *time.Time    `json:"dueAt,omitempty"`
+	PaidAt   *time.Time    `json:"paidAt,omitempty"`
+	Method   string        `json:"method"`
+	Notes    string        `json:"notes"`
+
+	GilAmount float64 `json:"gilAmount"`
+	RicAmount float64 `json:"ricAmount"`
+
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type Pipeline struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`

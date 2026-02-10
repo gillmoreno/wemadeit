@@ -6,6 +6,7 @@ import {
   Deal,
   Interaction,
   Organization,
+  Payment,
   Pipeline,
   PipelineStage,
   Project,
@@ -17,6 +18,7 @@ import {
   createDeal,
   createInteraction,
   createOrganization,
+  createPayment,
   createPipeline,
   createPipelineStage,
   createProject,
@@ -27,6 +29,7 @@ import {
   deleteDeals,
   deleteInteractions,
   deleteOrganizations,
+  deletePayments,
   deletePipelineStages,
   deletePipelines,
   deleteProjects,
@@ -66,7 +69,7 @@ type AppSettings = {
 
 function currency(amount: number, code: string) {
   const safe = Number.isFinite(amount) ? amount : 0;
-  const c = code || 'USD';
+  const c = code || 'EUR';
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency: c }).format(safe);
   } catch {
@@ -78,6 +81,7 @@ type CrudKind =
   | 'organization'
   | 'contact'
   | 'deal'
+  | 'payment'
   | 'pipeline'
   | 'pipelineStage'
   | 'project'
@@ -146,6 +150,7 @@ export default function HomePage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -171,7 +176,7 @@ export default function HomePage() {
   const [dealContactId, setDealContactId] = useState('');
   const [dealTitle, setDealTitle] = useState('');
   const [dealValue, setDealValue] = useState<number>(0);
-  const [dealCurrency, setDealCurrency] = useState('USD');
+  const [dealCurrency, setDealCurrency] = useState('EUR');
   const [dealProbability, setDealProbability] = useState<number>(35);
   const [dealStageId, setDealStageId] = useState('');
   const [dealDomain, setDealDomain] = useState('');
@@ -194,7 +199,7 @@ export default function HomePage() {
   const [projectName, setProjectName] = useState('');
   const [projectCode, setProjectCode] = useState('');
   const [projectBudget, setProjectBudget] = useState<number>(0);
-  const [projectCurrency, setProjectCurrency] = useState('USD');
+  const [projectCurrency, setProjectCurrency] = useState('EUR');
 
   const [taskProjectId, setTaskProjectId] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
@@ -213,7 +218,7 @@ export default function HomePage() {
 
   const [quoteDealId, setQuoteDealId] = useState('');
   const [quoteTitle, setQuoteTitle] = useState('');
-  const [quoteCurrency, setQuoteCurrency] = useState('USD');
+  const [quoteCurrency, setQuoteCurrency] = useState('EUR');
   const [quoteTaxRate, setQuoteTaxRate] = useState<number>(22);
   const [quoteDiscountAmount, setQuoteDiscountAmount] = useState<number>(0);
   const [quoteValidUntil, setQuoteValidUntil] = useState('');
@@ -236,6 +241,7 @@ export default function HomePage() {
 
   const [crudBusy, setCrudBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [paymentSelectedIds, setPaymentSelectedIds] = useState<string[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [edit, setEdit] = useState<EditState | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ConfirmDeleteState | null>(null);
@@ -254,6 +260,7 @@ export default function HomePage() {
       setDealFocusId(null);
       setDealFocusMode('view');
       setDealFocusDraft(null);
+      setPaymentSelectedIds([]);
     }
   }, [view]);
 
@@ -267,6 +274,10 @@ export default function HomePage() {
     const d = deals.find((x) => x.id === dealFocusId);
     if (d) setDealFocusDraft({ ...d });
   }, [dealFocusId, deals, dealFocusMode]);
+
+  useEffect(() => {
+    setPaymentSelectedIds([]);
+  }, [dealFocusId]);
 
   useEffect(() => {
     if (!dealStageId && pipelineStages.length > 0) {
@@ -295,6 +306,7 @@ export default function HomePage() {
   useEffect(() => {
     // Selection and context are view-scoped.
     setSelectedIds([]);
+    setPaymentSelectedIds([]);
     setContextMenu(null);
     setEdit(null);
     setConfirmDelete(null);
@@ -350,6 +362,7 @@ export default function HomePage() {
       setOrganizations(data.organizations);
       setContacts(data.contacts);
       setDeals(data.deals);
+      setPayments(data.payments);
       setPipelines(data.pipelines);
       setPipelineStages(data.pipelineStages);
       setProjects(data.projects);
@@ -458,6 +471,21 @@ export default function HomePage() {
     return dealById.get(dealFocusId) || null;
   }, [dealById, dealFocusId]);
 
+  const paymentsByDealId = useMemo(() => {
+    const map = new Map<string, Payment[]>();
+    payments.forEach((p) => {
+      const id = (p.dealId || '').trim();
+      if (!id) return;
+      const arr = map.get(id) || [];
+      arr.push(p);
+      map.set(id, arr);
+    });
+    for (const arr of map.values()) {
+      arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return map;
+  }, [payments]);
+
   const projectById = useMemo(() => {
     const map = new Map<string, Project>();
     projects.forEach((p) => map.set(p.id, p));
@@ -500,11 +528,13 @@ export default function HomePage() {
   }, [deals]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const paymentSelectedSet = useMemo(() => new Set(paymentSelectedIds), [paymentSelectedIds]);
 
   const kindLabels: Record<CrudKind, { singular: string; plural: string }> = {
     organization: { singular: 'organization', plural: 'organizations' },
     contact: { singular: 'contact', plural: 'contacts' },
     deal: { singular: 'deal', plural: 'deals' },
+    payment: { singular: 'payment', plural: 'payments' },
     pipeline: { singular: 'pipeline', plural: 'pipelines' },
     pipelineStage: { singular: 'stage', plural: 'stages' },
     project: { singular: 'project', plural: 'projects' },
@@ -529,6 +559,17 @@ export default function HomePage() {
 
   function selectAll(ids: string[], enabled: boolean) {
     setSelectedIds(enabled ? ids : []);
+  }
+
+  function togglePaymentSelected(id: string) {
+    setPaymentSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
+  }
+
+  function selectAllPayments(ids: string[], enabled: boolean) {
+    setPaymentSelectedIds(enabled ? ids : []);
   }
 
   function openContextMenu(kind: CrudKind, item: any, x: number, y: number) {
@@ -584,6 +625,7 @@ export default function HomePage() {
     setNotice(null);
     setContextMenu(null);
     setSelectedIds([]);
+    setPaymentSelectedIds([]);
     setDealFocusId(clean);
     setDealFocusMode('view');
     const d = deals.find((x) => x.id === clean);
@@ -594,6 +636,7 @@ export default function HomePage() {
     setDealFocusId(null);
     setDealFocusMode('view');
     setDealFocusDraft(null);
+    setPaymentSelectedIds([]);
   }
 
   function updateDealFocusDraft(patch: Record<string, any>) {
@@ -650,6 +693,10 @@ export default function HomePage() {
             closeDealFocus();
           }
           break;
+        case 'payment':
+          await deletePayments(clean);
+          setPaymentSelectedIds([]);
+          break;
         case 'pipeline':
           await deletePipelines(clean);
           break;
@@ -700,6 +747,9 @@ export default function HomePage() {
           break;
         case 'deal':
           await createDeal(edit.draft as Deal);
+          break;
+        case 'payment':
+          await createPayment(edit.draft as Payment);
           break;
         case 'pipeline':
           await createPipeline(edit.draft as Pipeline);
@@ -835,7 +885,7 @@ export default function HomePage() {
         workType: dealWorkType.trim(),
         workClosedAt: dateInputToISO(dealWorkClosedAt),
         value: Number(dealValue) || 0,
-        currency: dealCurrency.trim() || 'USD',
+        currency: dealCurrency.trim() || 'EUR',
         probability: Number(dealProbability) || 0,
         status: 'open'
       });
@@ -895,7 +945,7 @@ export default function HomePage() {
         name,
         code: projectCode.trim(),
         budget: Number(projectBudget) || 0,
-        currency: projectCurrency.trim() || 'USD',
+        currency: projectCurrency.trim() || 'EUR',
         status: 'active'
       });
       setProjectName('');
@@ -1013,7 +1063,7 @@ export default function HomePage() {
       const created = await createQuotation({
         dealId,
         title,
-        currency: quoteCurrency.trim() || 'USD',
+        currency: quoteCurrency.trim() || 'EUR',
         taxRate: Number(quoteTaxRate) || 0,
         discountAmount: Number(quoteDiscountAmount) || 0,
         validUntil: validUntil ? new Date(validUntil).toISOString() : undefined,
@@ -1759,6 +1809,18 @@ export default function HomePage() {
                     const contact = contactById.get(d.contactId);
                     const stage = stageById.get(d.pipelineStageId);
                     const draft = dealFocusDraft || d;
+                    const dealPayments = paymentsByDealId.get(d.id) || [];
+                    const paidPayments = dealPayments.filter((p) => p.status === 'paid');
+                    const plannedPayments = dealPayments.filter((p) => p.status === 'planned');
+                    const totalContract = (d.value || 0) + (d.taxes || 0);
+                    const paidTotal = paidPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                    const dueTotal = totalContract - paidTotal;
+                    const gilReceived = paidPayments.reduce((sum, p) => sum + (Number(p.gilAmount) || 0), 0);
+                    const ricReceived = paidPayments.reduce((sum, p) => sum + (Number(p.ricAmount) || 0), 0);
+                    const gilDue = (d.shareGil || 0) - gilReceived;
+                    const ricDue = (d.shareRic || 0) - ricReceived;
+                    const plannedTotal = plannedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                    const dueLabel = dueTotal >= 0 ? 'Due' : 'Overpaid';
 
                     return (
                       <div className="grid gap-6">
@@ -2070,6 +2132,135 @@ export default function HomePage() {
                                 </div>
                               </div>
 
+                              <div className="rounded-xl border border-sand-200 bg-white p-4 lg:col-span-2">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Payments</div>
+                                    <div className="mt-2 grid gap-1 text-sm text-sand-700">
+                                      <div>
+                                        Total: {currency(totalContract, d.currency)} · Paid: {currency(paidTotal, d.currency)} · {dueLabel}: {currency(dueTotal, d.currency)}
+                                      </div>
+                                      {plannedTotal > 0 && <div>Planned: {currency(plannedTotal, d.currency)}</div>}
+                                      <div>
+                                        Gil: received {currency(gilReceived, d.currency)} · due {currency(gilDue, d.currency)}
+                                      </div>
+                                      <div>
+                                        Ric: received {currency(ricReceived, d.currency)} · due {currency(ricDue, d.currency)}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        startEdit('payment', {
+                                          dealId: d.id,
+                                          title: '',
+                                          amount: 0,
+                                          currency: (d.currency || 'EUR').trim() || 'EUR',
+                                          status: 'paid',
+                                          paidAt: new Date().toISOString(),
+                                          method: '',
+                                          notes: '',
+                                          gilAmount: 0,
+                                          ricAmount: 0
+                                        })
+                                      }
+                                      className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                      disabled={crudBusy}
+                                    >
+                                      Add payment
+                                    </button>
+
+                                    {dealPayments.length > 0 && (
+                                      <label className="flex items-center gap-2 text-sm text-sand-700">
+                                        <input
+                                          type="checkbox"
+                                          checked={dealPayments.length > 0 && dealPayments.every((p) => paymentSelectedSet.has(p.id))}
+                                          onChange={(e) => selectAllPayments(dealPayments.map((p) => p.id), e.target.checked)}
+                                        />
+                                        Select all
+                                      </label>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {paymentSelectedIds.length > 0 && (
+                                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                                    <div>
+                                      Selected: <span className="font-semibold">{paymentSelectedIds.length}</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        onClick={() => askDelete('payment', paymentSelectedIds)}
+                                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                                        disabled={crudBusy}
+                                      >
+                                        Delete selected
+                                      </button>
+                                      <button
+                                        onClick={() => setPaymentSelectedIds([])}
+                                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                        disabled={crudBusy}
+                                      >
+                                        Clear
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="mt-4 grid gap-3">
+                                  {dealPayments.length === 0 && <div className="text-sm text-sand-700">No payments yet.</div>}
+                                  {dealPayments.map((p) => (
+                                    <div
+                                      key={p.id}
+                                      className="rounded-xl border border-sand-200 bg-white p-4"
+                                      onContextMenu={(e) => onItemContextMenu(e, 'payment', p)}
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={paymentSelectedSet.has(p.id)}
+                                          onChange={() => togglePaymentSelected(p.id)}
+                                          className="mt-1"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <div className="text-sm font-semibold text-stone-900">{p.title || 'Payment'}</div>
+                                            <span className="pill">{p.status || 'paid'}</span>
+                                            {p.method ? <span className="pill">{p.method}</span> : null}
+                                          </div>
+                                          <div className="mt-1 text-sm text-sand-700">
+                                            {p.status === 'paid'
+                                              ? `Paid: ${p.paidAt ? isoToDateInput(p.paidAt) : '—'}`
+                                              : p.dueAt
+                                                ? `Due: ${isoToDateInput(p.dueAt)}`
+                                                : 'Planned'}
+                                          </div>
+                                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-sand-700">
+                                            <div>Gil: {currency(Number(p.gilAmount) || 0, p.currency || d.currency)}</div>
+                                            <div>Ric: {currency(Number(p.ricAmount) || 0, p.currency || d.currency)}</div>
+                                          </div>
+                                          {p.notes && <div className="mt-2 whitespace-pre-wrap text-sm text-sand-700">{p.notes}</div>}
+                                        </div>
+                                        <div className="flex flex-col items-end gap-2">
+                                          <div className="text-sm font-semibold text-stone-900">{currency(Number(p.amount) || 0, p.currency || d.currency)}</div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => onItemActionsClick(e, 'payment', p)}
+                                            className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                            disabled={crudBusy}
+                                          >
+                                            ...
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
                               {(d.description || d.notes || d.lostReason) && (
                                 <div className="rounded-xl border border-sand-200 bg-white p-4 lg:col-span-2">
                                   <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Notes</div>
@@ -2148,7 +2339,7 @@ export default function HomePage() {
                           <div className="grid grid-cols-2 gap-3">
                             <label>
                               <span className="field-label">Currency</span>
-                              <input className="field-input" value={dealCurrency} onChange={(e) => setDealCurrency(e.target.value)} placeholder="USD" />
+                              <input className="field-input" value={dealCurrency} onChange={(e) => setDealCurrency(e.target.value)} placeholder="EUR" />
                             </label>
                             <label>
                               <span className="field-label">Probability (%)</span>
@@ -2430,7 +2621,7 @@ export default function HomePage() {
                   </div>
                   <label>
                     <span className="field-label">Currency</span>
-                    <input className="field-input" value={projectCurrency} onChange={(e) => setProjectCurrency(e.target.value)} placeholder="USD" />
+                    <input className="field-input" value={projectCurrency} onChange={(e) => setProjectCurrency(e.target.value)} placeholder="EUR" />
                   </label>
                   <button
                     onClick={() => void onCreateProject()}
@@ -2680,7 +2871,7 @@ export default function HomePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <label>
                         <span className="field-label">Currency</span>
-                        <input className="field-input" value={quoteCurrency} onChange={(e) => setQuoteCurrency(e.target.value)} placeholder="USD" />
+                        <input className="field-input" value={quoteCurrency} onChange={(e) => setQuoteCurrency(e.target.value)} placeholder="EUR" />
                       </label>
                       <label>
                         <span className="field-label">Valid until</span>
@@ -3565,6 +3756,92 @@ export default function HomePage() {
                 <label className="md:col-span-2">
                   <span className="field-label">Lost Reason</span>
                   <input className="field-input" value={edit.draft.lostReason || ''} onChange={(e) => updateEditDraft({ lostReason: e.target.value })} />
+                </label>
+              </div>
+            )}
+
+            {edit.kind === 'payment' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <label className="md:col-span-3">
+                  <span className="field-label">Deal</span>
+                  <select className="field-input" value={edit.draft.dealId || ''} onChange={(e) => updateEditDraft({ dealId: e.target.value })}>
+                    <option value="">Select...</option>
+                    {deals.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="md:col-span-2">
+                  <span className="field-label">Title</span>
+                  <input className="field-input" value={edit.draft.title || ''} onChange={(e) => updateEditDraft({ title: e.target.value })} placeholder="Deposit / Milestone / Final" />
+                </label>
+                <label>
+                  <span className="field-label">Amount</span>
+                  <input className="field-input" inputMode="decimal" value={String(edit.draft.amount ?? 0)} onChange={(e) => updateEditDraft({ amount: Number(e.target.value) || 0 })} />
+                </label>
+
+                <label>
+                  <span className="field-label">Status</span>
+                  <select className="field-input" value={edit.draft.status || 'paid'} onChange={(e) => updateEditDraft({ status: e.target.value })}>
+                    <option value="planned">planned</option>
+                    <option value="paid">paid</option>
+                    <option value="void">void</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="field-label">Due date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.dueAt as any)}
+                    onChange={(e) => updateEditDraft({ dueAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Paid date</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.paidAt as any)}
+                    onChange={(e) => updateEditDraft({ paidAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+
+                <label className="md:col-span-2">
+                  <span className="field-label">Method</span>
+                  <input className="field-input" value={edit.draft.method || ''} onChange={(e) => updateEditDraft({ method: e.target.value })} placeholder="Bank transfer / Cash / Stripe" />
+                </label>
+                <label>
+                  <span className="field-label">Currency</span>
+                  <input className="field-input" value={edit.draft.currency || ''} onChange={(e) => updateEditDraft({ currency: e.target.value })} placeholder="EUR" />
+                </label>
+
+                <label>
+                  <span className="field-label">Gil amount</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.gilAmount ?? 0)}
+                    onChange={(e) => updateEditDraft({ gilAmount: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Ric amount</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.ricAmount ?? 0)}
+                    onChange={(e) => updateEditDraft({ ricAmount: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <div className="hidden md:block" />
+
+                <label className="md:col-span-3">
+                  <span className="field-label">Notes</span>
+                  <textarea className="field-input" rows={3} value={edit.draft.notes || ''} onChange={(e) => updateEditDraft({ notes: e.target.value })} />
                 </label>
               </div>
             )}

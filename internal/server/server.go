@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/organizations", s.requireAuth(s.handleOrganizations))
 	mux.HandleFunc("/api/contacts", s.requireAuth(s.handleContacts))
 	mux.HandleFunc("/api/deals", s.requireAuth(s.handleDeals))
+	mux.HandleFunc("/api/payments", s.requireAuth(s.handlePayments))
 	mux.HandleFunc("/api/pipelines", s.requireAuth(s.handlePipelines))
 	mux.HandleFunc("/api/pipeline_stages", s.requireAuth(s.handlePipelineStages))
 	mux.HandleFunc("/api/projects", s.requireAuth(s.handleProjects))
@@ -239,6 +240,11 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 		return
 	}
+	payments, err := s.store.LoadPayments()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+		return
+	}
 	projects, err := s.store.LoadProjects()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
@@ -285,6 +291,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		"organizations":  orgs,
 		"contacts":       contacts,
 		"deals":          deals,
+		"payments":       payments,
 		"pipelines":      pipelines,
 		"pipelineStages": pipelineStages,
 		"projects":       projects,
@@ -440,7 +447,7 @@ func (s *Server) handleDeals(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if d.Currency == "" {
-			d.Currency = "USD"
+			d.Currency = "EUR"
 		}
 		if d.Status == "" {
 			d.Status = models.DealOpen
@@ -478,6 +485,106 @@ func (s *Server) handleDeals(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if err := s.store.DeleteDeal(id); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
+	}
+}
+
+func (s *Server) handlePayments(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		dealID := strings.TrimSpace(r.URL.Query().Get("deal_id"))
+		if dealID == "" {
+			dealID = strings.TrimSpace(r.URL.Query().Get("dealId"))
+		}
+
+		var payments []models.Payment
+		var err error
+		if dealID != "" {
+			payments, err = s.store.LoadPaymentsByDeal(dealID)
+		} else {
+			payments, err = s.store.LoadPayments()
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		writeJSON(w, http.StatusOK, payments)
+	case http.MethodPost:
+		var p models.Payment
+		if err := readJSON(r, &p); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+
+		now := time.Now()
+		if p.ID == "" {
+			p.ID = newID()
+		}
+		if p.CreatedAt.IsZero() {
+			p.CreatedAt = now
+		}
+		p.UpdatedAt = now
+
+		if strings.TrimSpace(p.DealID) == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse("dealId is required"))
+			return
+		}
+		if strings.TrimSpace(p.Currency) == "" {
+			p.Currency = "EUR"
+		}
+		if p.Status == "" {
+			p.Status = models.PaymentPaid
+		}
+		switch p.Status {
+		case models.PaymentPlanned, models.PaymentPaid, models.PaymentVoid:
+			// ok
+		default:
+			writeJSON(w, http.StatusBadRequest, errorResponse("invalid status"))
+			return
+		}
+
+		if p.Amount < 0 {
+			writeJSON(w, http.StatusBadRequest, errorResponse("amount must be >= 0"))
+			return
+		}
+		if p.GilAmount < 0 || p.RicAmount < 0 {
+			writeJSON(w, http.StatusBadRequest, errorResponse("gilAmount and ricAmount must be >= 0"))
+			return
+		}
+		if (p.GilAmount + p.RicAmount) > (p.Amount + 0.01) {
+			writeJSON(w, http.StatusBadRequest, errorResponse("gilAmount + ricAmount must be <= amount"))
+			return
+		}
+
+		if p.Status == models.PaymentPaid {
+			if p.PaidAt == nil || p.PaidAt.IsZero() {
+				t := now
+				p.PaidAt = &t
+			}
+		}
+
+		if err := s.store.SavePayment(p); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		writeJSON(w, http.StatusOK, p)
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if err := s.store.DeletePayment(id); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 				return
 			}
@@ -650,7 +757,7 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if p.Currency == "" {
-			p.Currency = "USD"
+			p.Currency = "EUR"
 		}
 		if p.Status == "" {
 			p.Status = models.ProjectActive
@@ -780,7 +887,7 @@ func (s *Server) handleQuotations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if strings.TrimSpace(q.Currency) == "" {
-			q.Currency = "USD"
+			q.Currency = "EUR"
 		}
 		if q.Status == "" {
 			q.Status = models.QuotationDraft

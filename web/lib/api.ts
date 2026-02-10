@@ -62,6 +62,23 @@ export type Deal = {
   updatedAt: string;
 };
 
+export type Payment = {
+  id: string;
+  dealId: string;
+  title: string;
+  amount: number;
+  currency: string;
+  status: string; // planned | paid | void
+  dueAt?: string;
+  paidAt?: string;
+  method: string;
+  notes: string;
+  gilAmount: number;
+  ricAmount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Pipeline = {
   id: string;
   name: string;
@@ -183,6 +200,7 @@ export type AppState = {
   organizations: Organization[];
   contacts: Contact[];
   deals: Deal[];
+  payments: Payment[];
   pipelines: Pipeline[];
   pipelineStages: PipelineStage[];
   projects: Project[];
@@ -263,6 +281,7 @@ export async function getState(): Promise<AppState> {
     organizations: Array.isArray(data?.organizations) ? (data.organizations as Organization[]) : [],
     contacts: Array.isArray(data?.contacts) ? (data.contacts as Contact[]) : [],
     deals: Array.isArray(data?.deals) ? (data.deals as Deal[]) : [],
+    payments: Array.isArray(data?.payments) ? (data.payments as Payment[]) : [],
     pipelines: Array.isArray(data?.pipelines) ? (data.pipelines as Pipeline[]) : [],
     pipelineStages: Array.isArray(data?.pipelineStages) ? (data.pipelineStages as PipelineStage[]) : [],
     projects: Array.isArray(data?.projects) ? (data.projects as Project[]) : [],
@@ -292,6 +311,13 @@ export async function createDeal(deal: Partial<Deal>) {
   return request<Deal>('/api/deals', {
     method: 'POST',
     body: JSON.stringify(deal)
+  });
+}
+
+export async function createPayment(payment: Partial<Payment>) {
+  return request<Payment>('/api/payments', {
+    method: 'POST',
+    body: JSON.stringify(payment)
   });
 }
 
@@ -367,6 +393,13 @@ export async function deleteContacts(ids: string[] | string) {
 
 export async function deleteDeals(ids: string[] | string) {
   return request<DeleteResponse>('/api/deals', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deletePayments(ids: string[] | string) {
+  return request<DeleteResponse>('/api/payments', {
     method: 'DELETE',
     body: JSON.stringify({ ids: normalizeIDs(ids) })
   });

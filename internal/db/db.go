@@ -123,6 +123,22 @@ func (s *Store) migrate() error {
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS payments (
+			id TEXT PRIMARY KEY,
+			deal_id TEXT NOT NULL,
+			title TEXT NOT NULL DEFAULT '',
+			amount REAL NOT NULL DEFAULT 0,
+			currency TEXT NOT NULL DEFAULT 'EUR',
+			status TEXT NOT NULL DEFAULT 'paid',
+			due_at INTEGER NOT NULL DEFAULT 0,
+			paid_at INTEGER NOT NULL DEFAULT 0,
+			method TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
+			gil_amount REAL NOT NULL DEFAULT 0,
+			ric_amount REAL NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS pipelines (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -230,6 +246,8 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+
+	_, _ = s.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_payments_deal_id ON payments(deal_id);`)
 
 	// Forward-only compatibility for older DBs.
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN pipeline_stage_id TEXT NOT NULL DEFAULT '';`)
@@ -427,7 +445,7 @@ func (s *Store) SeedIfNeeded() error {
 		Title:           "Website refresh",
 		Description:     "Design + build marketing site refresh.",
 		Value:           12000,
-		Currency:        "USD",
+		Currency:        "EUR",
 		Status:          models.DealOpen,
 		Probability:     35,
 		Source:          "Referral",
@@ -448,7 +466,7 @@ func (s *Store) SeedIfNeeded() error {
 		Code:        "WM-001",
 		Status:      models.ProjectActive,
 		Budget:      12000,
-		Currency:    "USD",
+		Currency:    "EUR",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -571,6 +589,9 @@ func (s *Store) DeleteOrganization(orgID string) error {
 	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?);`, orgID); err != nil {
 		return err
 	}
+	if _, err = tx.Exec(`DELETE FROM payments WHERE deal_id IN (SELECT id FROM deals WHERE organization_id = ?);`, orgID); err != nil {
+		return err
+	}
 
 	// Delete interactions referencing the org directly.
 	if _, err = tx.Exec(`DELETE FROM interactions WHERE organization_id = ?;`, orgID); err != nil {
@@ -685,6 +706,9 @@ func (s *Store) DeleteContact(contactID string) error {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?);`, contactID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM payments WHERE deal_id IN (SELECT id FROM deals WHERE contact_id = ?);`, contactID); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM deals WHERE contact_id = ?;`, contactID); err != nil {
@@ -859,6 +883,9 @@ func (s *Store) DeleteDeal(dealID string) error {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM quotations WHERE deal_id = ?;`, dealID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM payments WHERE deal_id = ?;`, dealID); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM interactions WHERE deal_id = ?;`, dealID); err != nil {
