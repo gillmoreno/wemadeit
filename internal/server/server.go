@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/pipeline_stages", s.requireAuth(s.handlePipelineStages))
 	mux.HandleFunc("/api/projects", s.requireAuth(s.handleProjects))
 	mux.HandleFunc("/api/tasks", s.requireAuth(s.handleTasks))
+	mux.HandleFunc("/api/users", s.requireAuth(s.handleUsers))
 	mux.HandleFunc("/api/quotations", s.requireAuth(s.handleQuotations))
 	mux.HandleFunc("/api/quotation_items", s.requireAuth(s.handleQuotationItems))
 	mux.HandleFunc("/api/interactions", s.requireAuth(s.handleInteractions))
@@ -748,14 +749,31 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		}
 		p.UpdatedAt = now
 
-		if p.Name == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("name is required"))
-			return
-		}
-		if p.DealID == "" {
+		if strings.TrimSpace(p.DealID) == "" {
 			writeJSON(w, http.StatusBadRequest, errorResponse("dealId is required"))
 			return
 		}
+
+		// Project name is derived from its Deal to keep projects lightweight.
+		deals, err := s.store.LoadDeals()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		dealTitle := ""
+		for _, d := range deals {
+			if d.ID == p.DealID {
+				dealTitle = strings.TrimSpace(d.Title)
+				break
+			}
+		}
+		if dealTitle == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse("dealId not found"))
+			return
+		}
+		p.Name = dealTitle
+		p.Code = ""
+
 		if p.Currency == "" {
 			p.Currency = "EUR"
 		}
@@ -804,6 +822,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
 			return
 		}
+		isNew := strings.TrimSpace(t.ID) == ""
 		now := time.Now()
 		if t.ID == "" {
 			t.ID = newID()
@@ -823,6 +842,20 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		if t.Status == "" {
 			t.Status = models.TaskTodo
+		}
+		if strings.TrimSpace(t.OwnerUserID) == "" && isNew {
+			t.OwnerUserID = mustAuth(r).User.ID
+		}
+		if strings.TrimSpace(t.OwnerUserID) != "" {
+			_, ok, err := s.store.FindUserByID(t.OwnerUserID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+			if !ok {
+				writeJSON(w, http.StatusBadRequest, errorResponse("ownerUserId not found"))
+				return
+			}
 		}
 
 		if err := s.store.SaveTask(t); err != nil {
@@ -846,6 +879,137 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
+	}
+}
+
+func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
+	ac := mustAuth(r)
+	if ac.User.Role != models.RoleAdmin {
+		writeJSON(w, http.StatusForbidden, errorResponse("forbidden"))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		users, err := s.store.LoadUsers()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		writeJSON(w, http.StatusOK, users)
+
+	case http.MethodPost:
+		var payload struct {
+			ID           string `json:"id"`
+			EmailAddress string `json:"emailAddress"`
+			Name         string `json:"name"`
+			Role         string `json:"role"`
+			Password     string `json:"password"`
+		}
+		if err := readJSON(r, &payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+
+		email := strings.ToLower(strings.TrimSpace(payload.EmailAddress))
+		if email == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse("emailAddress is required"))
+			return
+		}
+		name := strings.TrimSpace(payload.Name)
+		if name == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse("name is required"))
+			return
+		}
+		role := models.UserRole(strings.TrimSpace(payload.Role))
+		if role == "" {
+			role = models.RoleDeveloper
+		}
+		switch role {
+		case models.RoleAdmin, models.RoleSales, models.RoleProjectManager, models.RoleDeveloper:
+			// ok
+		default:
+			writeJSON(w, http.StatusBadRequest, errorResponse("invalid role"))
+			return
+		}
+
+		now := time.Now()
+		isNew := strings.TrimSpace(payload.ID) == ""
+
+		var user models.User
+		if !isNew {
+			u, ok, err := s.store.FindUserByID(strings.TrimSpace(payload.ID))
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+			if !ok {
+				writeJSON(w, http.StatusBadRequest, errorResponse("user not found"))
+				return
+			}
+			user = u
+		} else {
+			if _, ok, err := s.store.FindUserByEmail(email); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			} else if ok {
+				writeJSON(w, http.StatusConflict, errorResponse("emailAddress already exists"))
+				return
+			}
+			user = models.User{
+				ID:        newID(),
+				CreatedAt: now,
+			}
+		}
+
+		password := strings.TrimSpace(payload.Password)
+		if password != "" {
+			hash, err := auth.HashPassword(password)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+			user.PasswordHash = hash
+		} else if isNew {
+			writeJSON(w, http.StatusBadRequest, errorResponse("password is required"))
+			return
+		}
+
+		user.EmailAddress = email
+		user.Name = name
+		user.Role = role
+		user.UpdatedAt = now
+
+		if err := s.store.SaveUser(user); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		writeJSON(w, http.StatusOK, user)
+
+	case http.MethodDelete:
+		ids, err := deleteIDsFromRequest(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
+			return
+		}
+		for _, id := range ids {
+			clean := strings.TrimSpace(id)
+			if clean == "" {
+				continue
+			}
+			if clean == ac.User.ID {
+				writeJSON(w, http.StatusBadRequest, errorResponse("cannot delete your own user"))
+				return
+			}
+			if err := s.store.DeleteUser(clean); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
+
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
 	}

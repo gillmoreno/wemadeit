@@ -25,6 +25,7 @@ import {
   createQuotation,
   createQuotationItem,
   createTask,
+  createUser,
   deleteContacts,
   deleteDeals,
   deleteInteractions,
@@ -36,6 +37,7 @@ import {
   deleteQuotationItems,
   deleteQuotations,
   deleteTasks,
+  deleteUsers,
   getMe,
   getSettings,
   getState,
@@ -46,6 +48,7 @@ import {
 
 type DealsMode = 'kanban' | 'list' | 'gantt';
 type DealsStatusFilter = 'open' | 'won' | 'lost' | 'all';
+type TasksMode = 'kanban' | 'list';
 
 const ALL_PIPELINES = '__all__';
 
@@ -93,7 +96,8 @@ type CrudKind =
   | 'task'
   | 'quotation'
   | 'quotationItem'
-  | 'interaction';
+  | 'interaction'
+  | 'user';
 
 type ContextMenuState = {
   kind: CrudKind;
@@ -205,6 +209,10 @@ export default function HomePage() {
   const [dealsPipelineId, setDealsPipelineId] = useState<string>('');
   const [dealsStatus, setDealsStatus] = useState<DealsStatusFilter>('open');
   const [kanbanDragOverStageId, setKanbanDragOverStageId] = useState<string | null>(null);
+
+  const [tasksMode, setTasksMode] = useState<TasksMode>('kanban');
+  const [tasksProjectFilterId, setTasksProjectFilterId] = useState<string>('');
+  const [taskKanbanDragOverStatus, setTaskKanbanDragOverStatus] = useState<string | null>(null);
 
   const [projectDealId, setProjectDealId] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -540,6 +548,12 @@ export default function HomePage() {
     return map;
   }, [projects]);
 
+  const taskById = useMemo(() => {
+    const map = new Map<string, Task>();
+    tasks.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [tasks]);
+
   const pipelineById = useMemo(() => {
     const map = new Map<string, Pipeline>();
     pipelines.forEach((p) => map.set(p.id, p));
@@ -551,6 +565,12 @@ export default function HomePage() {
     pipelineStages.forEach((st) => map.set(st.id, st));
     return map;
   }, [pipelineStages]);
+
+  const userById = useMemo(() => {
+    const map = new Map<string, User>();
+    users.forEach((u) => map.set(u.id, u));
+    return map;
+  }, [users]);
 
   const itemsByQuotationId = useMemo(() => {
     const map = new Map<string, QuotationItem[]>();
@@ -565,6 +585,11 @@ export default function HomePage() {
 
   const openDeals = useMemo(() => deals.filter((d) => d.status === 'open').length, [deals]);
   const doneTasks = useMemo(() => tasks.filter((t) => t.status === 'done').length, [tasks]);
+  const filteredTasks = useMemo(() => {
+    const pid = (tasksProjectFilterId || '').trim();
+    if (!pid) return tasks;
+    return tasks.filter((t) => (t.projectId || '').trim() === pid);
+  }, [tasks, tasksProjectFilterId]);
   const dealsByStageId = useMemo(() => {
     const map = new Map<string, number>();
     deals.forEach((d) => {
@@ -589,7 +614,8 @@ export default function HomePage() {
     task: { singular: 'task', plural: 'tasks' },
     quotation: { singular: 'quotation', plural: 'quotations' },
     quotationItem: { singular: 'quotation item', plural: 'quotation items' },
-    interaction: { singular: 'interaction', plural: 'interactions' }
+    interaction: { singular: 'interaction', plural: 'interactions' },
+    user: { singular: 'user', plural: 'users' }
   };
 
   function labelFor(kind: CrudKind, count: number) {
@@ -788,6 +814,9 @@ export default function HomePage() {
         case 'interaction':
           await deleteInteractions(clean);
           break;
+        case 'user':
+          await deleteUsers(clean);
+          break;
         default:
           break;
       }
@@ -841,6 +870,9 @@ export default function HomePage() {
           break;
         case 'interaction':
           await createInteraction(edit.draft as Interaction);
+          break;
+        case 'user':
+          await createUser(edit.draft as any);
           break;
         default:
           break;
@@ -1000,6 +1032,50 @@ export default function HomePage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to update deal';
       setNotice(msg);
+    }
+  }
+
+  async function onUpdateTaskStatus(task: Task, status: string) {
+    setNotice(null);
+    try {
+      const saved = await createTask({
+        ...task,
+        status
+      });
+      setTasks((prev) => {
+        const idx = prev.findIndex((t) => t.id === saved.id);
+        if (idx === -1) return [saved, ...prev];
+        const next = prev.slice();
+        next[idx] = saved;
+        return next;
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update task';
+      setNotice(msg);
+    }
+  }
+
+  async function onCreateProjectFromDeal(deal: Deal) {
+    setNotice(null);
+    try {
+      const created = await createProject({
+        dealId: deal.id,
+        status: 'active'
+      });
+      setProjects((prev) => {
+        const idx = prev.findIndex((p) => p.id === created.id);
+        if (idx === -1) return [created, ...prev];
+        const next = prev.slice();
+        next[idx] = created;
+        return next;
+      });
+      setTasksProjectFilterId((prev) => (prev ? prev : created.id));
+      setNotice('Project created.');
+      return created;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create project';
+      setNotice(msg);
+      return null;
     }
   }
 
@@ -1273,6 +1349,36 @@ export default function HomePage() {
     if (stageId === '') return;
     if ((d.pipelineStageId || '') === stageId) return;
     void onUpdateDealStage(d, stageId);
+  }
+
+  function onTaskKanbanDragStart(e: ReactDragEvent, taskId: string) {
+    try {
+      e.dataTransfer.setData('text/plain', taskId);
+      e.dataTransfer.effectAllowed = 'move';
+    } catch {
+      // ignore
+    }
+  }
+
+  function onTaskKanbanDragOver(e: ReactDragEvent, status: string) {
+    e.preventDefault();
+    setTaskKanbanDragOverStatus(status);
+    try {
+      e.dataTransfer.dropEffect = 'move';
+    } catch {
+      // ignore
+    }
+  }
+
+  function onTaskKanbanDrop(e: ReactDragEvent, status: string) {
+    e.preventDefault();
+    setTaskKanbanDragOverStatus(null);
+    const id = String(e.dataTransfer?.getData('text/plain') || '').trim();
+    if (!id) return;
+    const t = taskById.get(id);
+    if (!t) return;
+    if ((t.status || '') === status) return;
+    void onUpdateTaskStatus(t, status);
   }
 
   async function saveSettings() {
@@ -2100,6 +2206,9 @@ export default function HomePage() {
                     const ricDue = (d.shareRic || 0) - ricReceived;
                     const plannedTotal = plannedPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
                     const dueLabel = dueTotal >= 0 ? 'Due' : 'Overpaid';
+                    const dealProject = projects.find((p) => p.dealId === d.id) || null;
+                    const dealProjectTasks = dealProject ? tasks.filter((t) => t.projectId === dealProject.id) : [];
+                    const dealProjectDoneTasks = dealProjectTasks.filter((t) => t.status === 'done').length;
 
                     return (
                       <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
@@ -2409,6 +2518,113 @@ export default function HomePage() {
                                   <div>Probability: {d.probability || 0}%</div>
                                   <div>Source: {d.source || '—'}</div>
                                 </div>
+                              </div>
+
+                              <div className="rounded-xl border border-sand-200 bg-white p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Project & Tasks</div>
+                                    <div className="mt-2 text-lg font-semibold text-stone-900">
+                                      {dealProject ? dealProject.status : 'No project yet'}
+                                    </div>
+                                    <div className="mt-1 text-sm text-sand-700">
+                                      {dealProject ? (
+                                        <>
+                                          Tasks: <span className="font-semibold">{dealProjectTasks.length}</span> · Done:{' '}
+                                          <span className="font-semibold">{dealProjectDoneTasks}</span>
+                                        </>
+                                      ) : (
+                                        'Create a lightweight project from this deal.'
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {dealProject ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => startEdit('project', dealProject)}
+                                          className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                          disabled={crudBusy}
+                                        >
+                                          Edit project
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            startNew('task', {
+                                              projectId: dealProject.id,
+                                              ownerUserId: (me?.id || '').trim(),
+                                              title: '',
+                                              status: 'todo',
+                                              priority: 1,
+                                              estimatedHours: 1
+                                            })
+                                          }
+                                          className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                          disabled={crudBusy}
+                                        >
+                                          Add task
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => void onCreateProjectFromDeal(d)}
+                                        className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                        disabled={crudBusy}
+                                      >
+                                        Create project
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {dealProject && (
+                                  <div className="mt-4 grid gap-2">
+                                    {dealProjectTasks.length === 0 ? (
+                                      <div className="text-sm text-sand-700">No tasks yet.</div>
+                                    ) : (
+                                      dealProjectTasks.slice(0, 6).map((t) => {
+                                        const owner = userById.get(t.ownerUserId);
+                                        const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
+                                        return (
+                                          <button
+                                            key={t.id}
+                                            type="button"
+                                            onClick={() => startEdit('task', t)}
+                                            className="w-full rounded-xl border border-sand-200 bg-white px-4 py-3 text-left text-sm transition hover:bg-sand-50"
+                                          >
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div className="min-w-0 flex-1">
+                                                <div className="truncate font-semibold text-stone-900">{t.title}</div>
+                                                <div className="mt-1 truncate text-xs text-sand-700">Owner: {ownerLabel}</div>
+                                              </div>
+                                              <div className="flex flex-wrap items-start gap-2">
+                                                <span className="pill">{t.status}</span>
+                                                <span className="pill">P{t.priority || 0}</span>
+                                              </div>
+                                            </div>
+                                          </button>
+                                        );
+                                      })
+                                    )}
+                                    {dealProjectTasks.length > 6 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setTasksMode('kanban');
+                                          setTasksProjectFilterId(dealProject.id);
+                                          setView('tasks');
+                                        }}
+                                        className="rounded-xl border border-sand-200 bg-sand-50 px-4 py-3 text-sm font-semibold text-sand-700 transition hover:bg-sand-100"
+                                        disabled={crudBusy}
+                                      >
+                                        View all tasks ({dealProjectTasks.length})
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
                               <div className="rounded-xl border border-sand-200 bg-white p-4 lg:col-span-2">
@@ -3136,11 +3352,7 @@ export default function HomePage() {
                     onClick={() =>
                       startNew('project', {
                         dealId: (deals[0]?.id || '').trim(),
-                        name: '',
-                        code: '',
-                        status: 'active',
-                        budget: 0,
-                        currency: 'EUR'
+                        status: 'active'
                       })
                     }
                     className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
@@ -3191,6 +3403,8 @@ export default function HomePage() {
                   {projects.length === 0 && <div className="text-sm text-sand-700">No projects yet.</div>}
                   {projects.map((p) => {
                     const deal = dealById.get(p.dealId);
+                    const org = deal ? orgById.get(deal.organizationId) : undefined;
+                    const taskCount = tasks.filter((t) => t.projectId === p.id).length;
                     return (
                       <div
                         key={p.id}
@@ -3200,13 +3414,12 @@ export default function HomePage() {
                         <div className="flex items-start gap-3">
                           <input type="checkbox" checked={selectedSet.has(p.id)} onChange={() => toggleSelected(p.id)} className="mt-1" />
                           <div className="min-w-0 flex-1">
-                            <div className="text-lg font-semibold text-stone-900">{p.name}</div>
-                            <div className="mt-1 text-sm text-sand-700">{deal?.title || 'Unknown deal'}</div>
-                            {p.code && <div className="mt-2 pill">{p.code}</div>}
+                            <div className="text-lg font-semibold text-stone-900">{deal?.title || p.name || 'Project'}</div>
+                            <div className="mt-1 text-sm text-sand-700">{org?.name || 'Unknown org'}</div>
                           </div>
                           <div className="flex flex-wrap items-start gap-2">
                             <span className="pill">{p.status}</span>
-                            <span className="pill">{currency(p.budget, p.currency)}</span>
+                            <span className="pill">{taskCount} tasks</span>
                             <button
                               type="button"
                               onClick={(e) => onItemActionsClick(e, 'project', p)}
@@ -3227,13 +3440,57 @@ export default function HomePage() {
           {view === 'tasks' && (
             <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-3xl text-sand-900">Tasks</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-3xl text-sand-900">Tasks</h2>
+                  <div className="inline-flex overflow-hidden rounded-xl border border-sand-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setTasksMode('kanban')}
+                      className={[
+                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
+                        tasksMode === 'kanban' ? 'bg-sand-100 text-sand-900' : 'bg-white text-sand-700 hover:bg-sand-50'
+                      ].join(' ')}
+                      disabled={crudBusy}
+                    >
+                      Kanban
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTasksMode('list')}
+                      className={[
+                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
+                        tasksMode === 'list' ? 'bg-sand-100 text-sand-900' : 'bg-white text-sand-700 hover:bg-sand-50'
+                      ].join(' ')}
+                      disabled={crudBusy}
+                    >
+                      List
+                    </button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="field-input max-w-[260px]"
+                    value={tasksProjectFilterId}
+                    onChange={(e) => setTasksProjectFilterId(e.target.value)}
+                    disabled={crudBusy || projects.length === 0}
+                    title={projects.length === 0 ? 'Create a project first' : 'Filter by project'}
+                  >
+                    <option value="">All projects</option>
+                    {projects.map((p) => {
+                      const deal = dealById.get(p.dealId);
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {deal?.title || p.name || p.id}
+                        </option>
+                      );
+                    })}
+                  </select>
                   <button
                     type="button"
                     onClick={() =>
                       startNew('task', {
-                        projectId: (projects[0]?.id || '').trim(),
+                        projectId: (tasksProjectFilterId || projects[0]?.id || '').trim(),
+                        ownerUserId: (me?.id || '').trim(),
                         title: '',
                         status: 'todo',
                         priority: 1,
@@ -3246,12 +3503,12 @@ export default function HomePage() {
                   >
                     New task
                   </button>
-                  {tasks.length > 0 && (
+                  {tasksMode === 'list' && filteredTasks.length > 0 && (
                     <label className="flex items-center gap-2 text-sm text-sand-700">
                       <input
                         type="checkbox"
-                        checked={tasks.length > 0 && tasks.every((t) => selectedSet.has(t.id))}
-                        onChange={(e) => selectAll(tasks.map((t) => t.id), e.target.checked)}
+                        checked={filteredTasks.length > 0 && filteredTasks.every((t) => selectedSet.has(t.id))}
+                        onChange={(e) => selectAll(filteredTasks.map((t) => t.id), e.target.checked)}
                       />
                       Select all
                     </label>
@@ -3283,40 +3540,129 @@ export default function HomePage() {
                 </div>
               )}
 
-              <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
-                <div className="grid gap-3">
-                  {tasks.length === 0 && <div className="text-sm text-sand-700">No tasks yet.</div>}
-                  {tasks.map((t) => {
-                    const project = projectById.get(t.projectId);
-                    return (
-                      <div
-                        key={t.id}
-                        className="rounded-xl border border-sand-200 bg-white p-4"
-                        onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={selectedSet.has(t.id)} onChange={() => toggleSelected(t.id)} className="mt-1" />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-lg font-semibold text-stone-900">{t.title}</div>
-                            <div className="mt-1 text-sm text-sand-700">{project?.name || 'Unknown project'}</div>
+              {tasksMode === 'kanban' ? (
+                <div className="mt-4 flex-1 min-h-0 overflow-x-auto">
+                  <div className="grid h-full min-w-[1050px] grid-cols-4 gap-4 pr-1">
+                    {[
+                      { id: 'todo', label: 'To do' },
+                      { id: 'in_progress', label: 'In progress' },
+                      { id: 'blocked', label: 'Blocked' },
+                      { id: 'done', label: 'Done' }
+                    ].map((col) => {
+                      const colTasks = filteredTasks.filter((t) => t.status === col.id);
+                      return (
+                        <div
+                          key={col.id}
+                          className={[
+                            'flex min-h-0 flex-col rounded-2xl border p-4 transition',
+                            taskKanbanDragOverStatus === col.id ? 'border-sand-500 bg-sand-100' : 'border-sand-200 bg-white'
+                          ].join(' ')}
+                          onDragOver={(e) => onTaskKanbanDragOver(e, col.id)}
+                          onDrop={(e) => onTaskKanbanDrop(e, col.id)}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">{col.label}</div>
+                            <div className="pill">{colTasks.length} tasks</div>
                           </div>
-                          <div className="flex flex-wrap items-start gap-2">
-                            <span className="pill">{t.status}</span>
-                            <span className="pill">P{t.priority || 0}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => onItemActionsClick(e, 'task', t)}
-                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                            >
-                              ...
-                            </button>
+
+                          <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-1">
+                            <div className="grid gap-3">
+                              {colTasks.length === 0 && <div className="text-xs text-sand-700">No tasks.</div>}
+                              {colTasks.map((t) => {
+                                const project = projectById.get(t.projectId);
+                                const deal = project ? dealById.get(project.dealId) : undefined;
+                                const owner = userById.get(t.ownerUserId);
+                                const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
+                                const projectLabel = deal?.title || project?.name || 'Unknown project';
+                                return (
+                                  <div
+                                    key={t.id}
+                                    className="cursor-grab rounded-xl border border-sand-200 bg-white p-4 shadow-sm transition hover:bg-sand-50 active:cursor-grabbing"
+                                    draggable
+                                    onDragStart={(e) => onTaskKanbanDragStart(e, t.id)}
+                                    onDragEnd={() => setTaskKanbanDragOverStatus(null)}
+                                    onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-semibold text-stone-900">{t.title}</div>
+                                        <div className="mt-1 truncate text-xs text-sand-700">
+                                          {projectLabel} · {ownerLabel}
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => onItemActionsClick(e, 'task', t)}
+                                        className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                        disabled={crudBusy}
+                                      >
+                                        ...
+                                      </button>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-sand-700">
+                                      <span className="pill">P{t.priority || 0}</span>
+                                      {t.ownerUserId ? <span className="pill">{ownerLabel}</span> : <span className="pill">UNASSIGNED</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
+                  <div className="grid gap-3">
+                    {tasks.length === 0 ? (
+                      <div className="text-sm text-sand-700">No tasks yet.</div>
+                    ) : filteredTasks.length === 0 ? (
+                      <div className="text-sm text-sand-700">No tasks for this project.</div>
+                    ) : (
+                      filteredTasks.map((t) => {
+                        const project = projectById.get(t.projectId);
+                        const deal = project ? dealById.get(project.dealId) : undefined;
+                        const owner = userById.get(t.ownerUserId);
+                        const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
+                        return (
+                          <div
+                            key={t.id}
+                            className="rounded-xl border border-sand-200 bg-white p-4"
+                            onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
+                          >
+                            <div className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedSet.has(t.id)}
+                                onChange={() => toggleSelected(t.id)}
+                                className="mt-1"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-lg font-semibold text-stone-900">{t.title}</div>
+                                <div className="mt-1 text-sm text-sand-700">{deal?.title || project?.name || 'Unknown project'}</div>
+                                <div className="mt-2 text-xs text-sand-700">Owner: {ownerLabel}</div>
+                              </div>
+                              <div className="flex flex-wrap items-start gap-2">
+                                <span className="pill">{t.status}</span>
+                                <span className="pill">P{t.priority || 0}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => onItemActionsClick(e, 'task', t)}
+                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                >
+                                  ...
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3619,6 +3965,72 @@ export default function HomePage() {
                     />
                     Auto summary
                   </label>
+                  </div>
+                )}
+
+                {me?.role === 'admin' && (
+                  <div className="mt-10">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-2xl font-semibold text-stone-900">Users</h3>
+                        <p className="mt-1 text-sm text-sand-700">Create users and assign them to tasks.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startNew('user', {
+                            emailAddress: '',
+                            name: '',
+                            role: 'developer',
+                            password: ''
+                          })
+                        }
+                        className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={crudBusy}
+                      >
+                        New user
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      {users.length === 0 ? (
+                        <div className="text-sm text-sand-700">No users yet.</div>
+                      ) : (
+                        users.map((u) => (
+                          <div key={u.id} className="rounded-xl border border-sand-200 bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-lg font-semibold text-stone-900">
+                                  {u.name}
+                                  {u.id === me?.id ? <span className="text-sand-700"> (you)</span> : null}
+                                </div>
+                                <div className="mt-1 text-sm text-sand-700">{u.emailAddress}</div>
+                              </div>
+                              <div className="flex flex-wrap items-start gap-2">
+                                <span className="pill">{u.role}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit('user', u)}
+                                  className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                  disabled={crudBusy}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => askDelete('user', [u.id])}
+                                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={crudBusy || u.id === me?.id}
+                                  title={u.id === me?.id ? 'You cannot delete your own user.' : 'Delete user'}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -4157,6 +4569,46 @@ export default function HomePage() {
               </div>
             )}
 
+            {edit.kind === 'user' && (
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <label className="md:col-span-2">
+                  <span className="field-label">Email</span>
+                  <input
+                    className="field-input"
+                    value={edit.draft.emailAddress || ''}
+                    onChange={(e) => updateEditDraft({ emailAddress: e.target.value })}
+                    placeholder="name@company.com"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Name</span>
+                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
+                </label>
+                <label>
+                  <span className="field-label">Role</span>
+                  <select className="field-input" value={edit.draft.role || 'developer'} onChange={(e) => updateEditDraft({ role: e.target.value })}>
+                    <option value="developer">developer</option>
+                    <option value="project_manager">project_manager</option>
+                    <option value="sales">sales</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </label>
+                <div className="hidden md:block" />
+                <label className="md:col-span-2">
+                  <span className="field-label">{String(edit.draft?.id || '').trim() ? 'Password (optional)' : 'Password'}</span>
+                  <input
+                    className="field-input"
+                    type="password"
+                    value={edit.draft.password || ''}
+                    onChange={(e) => updateEditDraft({ password: e.target.value })}
+                    placeholder={String(edit.draft?.id || '').trim() ? 'Leave blank to keep existing password' : 'Required'}
+                    autoComplete="new-password"
+                  />
+                </label>
+              </div>
+            )}
+
             {edit.kind === 'project' && (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <label className="md:col-span-2">
@@ -4170,14 +4622,9 @@ export default function HomePage() {
                     ))}
                   </select>
                 </label>
-                <label className="md:col-span-2">
-                  <span className="field-label">Name</span>
-                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
-                </label>
-                <label>
-                  <span className="field-label">Code</span>
-                  <input className="field-input" value={edit.draft.code || ''} onChange={(e) => updateEditDraft({ code: e.target.value })} />
-                </label>
+                <div className="md:col-span-2 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                  Project name is derived from the Deal title.
+                </div>
                 <label>
                   <span className="field-label">Status</span>
                   <select
@@ -4190,19 +4637,7 @@ export default function HomePage() {
                     <option value="support">support</option>
                   </select>
                 </label>
-                <label>
-                  <span className="field-label">Budget</span>
-                  <input
-                    className="field-input"
-                    inputMode="decimal"
-                    value={String(edit.draft.budget ?? 0)}
-                    onChange={(e) => updateEditDraft({ budget: Number(e.target.value) || 0 })}
-                  />
-                </label>
-                <label>
-                  <span className="field-label">Currency</span>
-                  <input className="field-input" value={edit.draft.currency || ''} onChange={(e) => updateEditDraft({ currency: e.target.value })} />
-                </label>
+                <div className="hidden md:block" />
                 <label>
                   <span className="field-label">Start Date</span>
                   <input
@@ -4248,9 +4683,27 @@ export default function HomePage() {
                   <span className="field-label">Project</span>
                   <select className="field-input" value={edit.draft.projectId || ''} onChange={(e) => updateEditDraft({ projectId: e.target.value })}>
                     <option value="">Select...</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
+                    {projects.map((p) => {
+                      const d = dealById.get(p.dealId);
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {d?.title || p.name || p.id}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Owner</span>
+                  <select
+                    className="field-input"
+                    value={edit.draft.ownerUserId || ''}
+                    onChange={(e) => updateEditDraft({ ownerUserId: e.target.value })}
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} · {u.emailAddress}
                       </option>
                     ))}
                   </select>
@@ -4599,6 +5052,11 @@ export default function HomePage() {
             {confirmDelete.kind === 'project' && (
               <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
                 Deleting a project also deletes its tasks.
+              </div>
+            )}
+            {confirmDelete.kind === 'user' && (
+              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
+                Deleting a user signs them out and unassigns any tasks they own.
               </div>
             )}
             {confirmDelete.kind === 'quotation' && (

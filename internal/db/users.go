@@ -116,3 +116,27 @@ func (s *Store) DeleteSession(token string) error {
 	_, err := s.DB.Exec(`DELETE FROM sessions WHERE token = ?;`, token)
 	return err
 }
+
+func (s *Store) DeleteUser(userID string) (err error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Keep tasks usable even if a user is removed.
+	if _, err = tx.Exec(`UPDATE tasks SET owner_user_id = '' WHERE owner_user_id = ?;`, userID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM sessions WHERE user_id = ?;`, userID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM users WHERE id = ?;`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

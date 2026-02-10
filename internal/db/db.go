@@ -173,13 +173,14 @@ func (s *Store) migrate() error {
 			updated_at INTEGER NOT NULL
 		);`,
 		`CREATE TABLE IF NOT EXISTS tasks (
-			id TEXT PRIMARY KEY,
-			project_id TEXT NOT NULL,
-			title TEXT NOT NULL,
-			description TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'todo',
-			priority INTEGER NOT NULL DEFAULT 0,
-			due_date INTEGER NOT NULL DEFAULT 0,
+				id TEXT PRIMARY KEY,
+				project_id TEXT NOT NULL,
+				owner_user_id TEXT NOT NULL DEFAULT '',
+				title TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				status TEXT NOT NULL DEFAULT 'todo',
+				priority INTEGER NOT NULL DEFAULT 0,
+				due_date INTEGER NOT NULL DEFAULT 0,
 			estimated_hours INTEGER NOT NULL DEFAULT 0,
 			actual_hours INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL,
@@ -263,6 +264,7 @@ func (s *Store) migrate() error {
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN share_ric REAL NOT NULL DEFAULT 0;`)
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN work_type TEXT NOT NULL DEFAULT '';`)
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN work_closed_at INTEGER NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE tasks ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT '';`)
 	return nil
 }
 
@@ -1012,10 +1014,11 @@ func (s *Store) SaveTask(t models.Task) error {
 	}
 	_, err := s.DB.Exec(
 		`INSERT OR REPLACE INTO tasks
-		(id, project_id, title, description, status, priority, due_date, estimated_hours, actual_hours, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+		(id, project_id, owner_user_id, title, description, status, priority, due_date, estimated_hours, actual_hours, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
 		t.ID,
 		t.ProjectID,
+		t.OwnerUserID,
 		t.Title,
 		t.Description,
 		string(t.Status),
@@ -1030,7 +1033,7 @@ func (s *Store) SaveTask(t models.Task) error {
 }
 
 func (s *Store) LoadTasks() ([]models.Task, error) {
-	rows, err := s.DB.Query(`SELECT id, project_id, title, description, status, priority, due_date, estimated_hours, actual_hours, created_at, updated_at FROM tasks ORDER BY created_at DESC;`)
+	rows, err := s.DB.Query(`SELECT id, project_id, owner_user_id, title, description, status, priority, due_date, estimated_hours, actual_hours, created_at, updated_at FROM tasks ORDER BY created_at DESC;`)
 	if err != nil {
 		return nil, err
 	}
@@ -1045,6 +1048,7 @@ func (s *Store) LoadTasks() ([]models.Task, error) {
 		if err := rows.Scan(
 			&t.ID,
 			&t.ProjectID,
+			&t.OwnerUserID,
 			&t.Title,
 			&t.Description,
 			&status,

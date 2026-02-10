@@ -185,6 +185,7 @@ export type User = {
 export type Task = {
   id: string;
   projectId: string;
+  ownerUserId: string;
   title: string;
   description: string;
   status: string;
@@ -349,6 +350,13 @@ export async function createTask(task: Partial<Task>) {
   });
 }
 
+export async function createUser(user: Partial<User> & { password?: string }) {
+  return request<User>('/api/users', {
+    method: 'POST',
+    body: JSON.stringify(user)
+  });
+}
+
 export async function createQuotation(quotation: Partial<Quotation>) {
   return request<Quotation>('/api/quotations', {
     method: 'POST',
@@ -449,6 +457,13 @@ export async function deleteQuotationItems(ids: string[] | string) {
 
 export async function deleteInteractions(ids: string[] | string) {
   return request<DeleteResponse>('/api/interactions', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids: normalizeIDs(ids) })
+  });
+}
+
+export async function deleteUsers(ids: string[] | string) {
+  return request<DeleteResponse>('/api/users', {
     method: 'DELETE',
     body: JSON.stringify({ ids: normalizeIDs(ids) })
   });
