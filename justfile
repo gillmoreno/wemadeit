@@ -305,6 +305,8 @@ deploy:
     set -euo pipefail
     echo "Stopping legacy Rails (if running)..."
     (cd legacy/rails && docker compose down) || true
+    # In case the legacy containers were started outside of compose, stop them by name.
+    docker rm -f wemadeit-web wemadeit-worker >/dev/null 2>&1 || true
     echo "Starting WeMadeIt (Go+Next) production container..."
     docker compose -f docker-compose.production.yml up -d --build
 
