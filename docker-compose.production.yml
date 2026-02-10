@@ -9,7 +9,10 @@ services:
     restart: unless-stopped
     ports:
       # Everything served by nginx (static frontend + /api reverse proxy).
-      - "8200:80"
+      #
+      # Port 3019 matches the legacy Rails docker-compose so you can "swap"
+      # the implementation without changing your Cloudflare tunnel ingress.
+      - "3019:80"
     volumes:
       # Persistent app state.
       - ./data:/data

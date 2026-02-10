@@ -49,9 +49,15 @@ Build + run:
 docker compose -f docker-compose.production.yml up -d --build
 ```
 
+If you are replacing the legacy Rails container (which previously bound port `3019`), run:
+
+```bash
+just deploy
+```
+
 Open:
-- App: `http://localhost:8200`
-- API health: `http://localhost:8200/api/health`
+- App: `http://localhost:3019`
+- API health: `http://localhost:3019/api/health`
 
 Logs:
 
@@ -102,8 +108,8 @@ You have two options:
 
 ### Option A: Host-managed `cloudflared` (recommended)
 
-Run the app via docker-compose so it listens on `localhost:8200`, then configure your tunnel to route to:
-- `http://localhost:8200`
+Run the app via docker-compose so it listens on `localhost:3019`, then configure your tunnel to route to:
+- `http://localhost:3019`
 
 ### Option B: Run `cloudflared` in Docker
 
@@ -112,7 +118,7 @@ If you prefer tunnel-in-compose, add a `cloudflared` service and use a tunnel to
 Example command (one-off):
 
 ```bash
-docker run --rm cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://host.docker.internal:8200
+docker run --rm cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://host.docker.internal:3019
 ```
 
 ## Troubleshooting
@@ -136,6 +142,5 @@ supervisorctl status
 ```
 
 If the UI loads but API calls fail:
-- Verify nginx proxy works: `curl -fsS http://localhost:8200/api/health`
+- Verify nginx proxy works: `curl -fsS http://localhost:3019/api/health`
 - Check API logs: `docker logs wemadeit --tail=200`
-

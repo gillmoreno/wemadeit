@@ -298,6 +298,16 @@ deploy-rails:
     cd legacy/rails && docker compose down
     cd legacy/rails && docker compose up --build -d
 
+# Replace the legacy Rails app with the Go+Next production container.
+# This keeps the same host port (3019) by default so your tunnel doesn't need changes.
+deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Stopping legacy Rails (if running)..."
+    (cd legacy/rails && docker compose down) || true
+    echo "Starting WeMadeIt (Go+Next) production container..."
+    docker compose -f docker-compose.production.yml up -d --build
+
 # Production (single-container: nginx + Go API).
 prod-build:
     docker build -f Dockerfile.production -t wemadeit:production .
