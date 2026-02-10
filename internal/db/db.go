@@ -100,6 +100,18 @@ func (s *Store) migrate() error {
 			pipeline_stage_id TEXT NOT NULL DEFAULT '',
 			title TEXT NOT NULL,
 			description TEXT NOT NULL DEFAULT '',
+			domain TEXT NOT NULL DEFAULT '',
+			domain_acquired_at INTEGER NOT NULL DEFAULT 0,
+			domain_expires_at INTEGER NOT NULL DEFAULT 0,
+			domain_cost REAL NOT NULL DEFAULT 0,
+			deposit REAL NOT NULL DEFAULT 0,
+			costs REAL NOT NULL DEFAULT 0,
+			taxes REAL NOT NULL DEFAULT 0,
+			net_total REAL NOT NULL DEFAULT 0,
+			share_gil REAL NOT NULL DEFAULT 0,
+			share_ric REAL NOT NULL DEFAULT 0,
+			work_type TEXT NOT NULL DEFAULT '',
+			work_closed_at INTEGER NOT NULL DEFAULT 0,
 			value REAL NOT NULL DEFAULT 0,
 			currency TEXT NOT NULL DEFAULT 'EUR',
 			expected_close_at INTEGER NOT NULL DEFAULT 0,
@@ -221,6 +233,18 @@ func (s *Store) migrate() error {
 
 	// Forward-only compatibility for older DBs.
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN pipeline_stage_id TEXT NOT NULL DEFAULT '';`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain TEXT NOT NULL DEFAULT '';`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain_acquired_at INTEGER NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain_expires_at INTEGER NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain_cost REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN deposit REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN costs REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN taxes REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN net_total REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN share_gil REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN share_ric REAL NOT NULL DEFAULT 0;`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN work_type TEXT NOT NULL DEFAULT '';`)
+	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN work_closed_at INTEGER NOT NULL DEFAULT 0;`)
 	return nil
 }
 
@@ -676,20 +700,53 @@ func (s *Store) DeleteContact(contactID string) error {
 }
 
 func (s *Store) SaveDeal(d models.Deal) error {
+	domainAcquiredUnix := int64(0)
+	if d.DomainAcquiredAt != nil {
+		domainAcquiredUnix = d.DomainAcquiredAt.Unix()
+	}
+
+	domainExpiresUnix := int64(0)
+	if d.DomainExpiresAt != nil {
+		domainExpiresUnix = d.DomainExpiresAt.Unix()
+	}
+
+	workClosedUnix := int64(0)
+	if d.WorkClosedAt != nil {
+		workClosedUnix = d.WorkClosedAt.Unix()
+	}
+
 	expectedCloseUnix := int64(0)
 	if d.ExpectedCloseAt != nil {
 		expectedCloseUnix = d.ExpectedCloseAt.Unix()
 	}
 	_, err := s.DB.Exec(
 		`INSERT OR REPLACE INTO deals
-		(id, organization_id, contact_id, pipeline_stage_id, title, description, value, currency, expected_close_at, status, probability, source, notes, lost_reason, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+		(id, organization_id, contact_id, pipeline_stage_id, title, description,
+		 domain, domain_acquired_at, domain_expires_at, domain_cost,
+		 deposit, costs, taxes, net_total, share_gil, share_ric, work_type, work_closed_at,
+		 value, currency, expected_close_at, status, probability, source, notes, lost_reason, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?,
+		        ?, ?, ?, ?,
+		        ?, ?, ?, ?, ?, ?, ?, ?,
+		        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
 		d.ID,
 		d.OrganizationID,
 		d.ContactID,
 		d.PipelineStageID,
 		d.Title,
 		d.Description,
+		d.Domain,
+		domainAcquiredUnix,
+		domainExpiresUnix,
+		d.DomainCost,
+		d.Deposit,
+		d.Costs,
+		d.Taxes,
+		d.NetTotal,
+		d.ShareGil,
+		d.ShareRic,
+		d.WorkType,
+		workClosedUnix,
 		d.Value,
 		d.Currency,
 		expectedCloseUnix,
@@ -705,7 +762,12 @@ func (s *Store) SaveDeal(d models.Deal) error {
 }
 
 func (s *Store) LoadDeals() ([]models.Deal, error) {
-	rows, err := s.DB.Query(`SELECT id, organization_id, contact_id, pipeline_stage_id, title, description, value, currency, expected_close_at, status, probability, source, notes, lost_reason, created_at, updated_at FROM deals ORDER BY created_at DESC;`)
+	rows, err := s.DB.Query(`SELECT
+		id, organization_id, contact_id, pipeline_stage_id, title, description,
+		domain, domain_acquired_at, domain_expires_at, domain_cost,
+		deposit, costs, taxes, net_total, share_gil, share_ric, work_type, work_closed_at,
+		value, currency, expected_close_at, status, probability, source, notes, lost_reason, created_at, updated_at
+		FROM deals ORDER BY created_at DESC;`)
 	if err != nil {
 		return nil, err
 	}
@@ -714,6 +776,9 @@ func (s *Store) LoadDeals() ([]models.Deal, error) {
 	deals := make([]models.Deal, 0)
 	for rows.Next() {
 		var d models.Deal
+		var domainAcquiredUnix int64
+		var domainExpiresUnix int64
+		var workClosedUnix int64
 		var expectedCloseUnix int64
 		var status string
 		var createdUnix, updatedUnix int64
@@ -724,6 +789,18 @@ func (s *Store) LoadDeals() ([]models.Deal, error) {
 			&d.PipelineStageID,
 			&d.Title,
 			&d.Description,
+			&d.Domain,
+			&domainAcquiredUnix,
+			&domainExpiresUnix,
+			&d.DomainCost,
+			&d.Deposit,
+			&d.Costs,
+			&d.Taxes,
+			&d.NetTotal,
+			&d.ShareGil,
+			&d.ShareRic,
+			&d.WorkType,
+			&workClosedUnix,
 			&d.Value,
 			&d.Currency,
 			&expectedCloseUnix,
@@ -736,6 +813,18 @@ func (s *Store) LoadDeals() ([]models.Deal, error) {
 			&updatedUnix,
 		); err != nil {
 			return nil, err
+		}
+		if domainAcquiredUnix > 0 {
+			t := time.Unix(domainAcquiredUnix, 0)
+			d.DomainAcquiredAt = &t
+		}
+		if domainExpiresUnix > 0 {
+			t := time.Unix(domainExpiresUnix, 0)
+			d.DomainExpiresAt = &t
+		}
+		if workClosedUnix > 0 {
+			t := time.Unix(workClosedUnix, 0)
+			d.WorkClosedAt = &t
 		}
 		if expectedCloseUnix > 0 {
 			t := time.Unix(expectedCloseUnix, 0)

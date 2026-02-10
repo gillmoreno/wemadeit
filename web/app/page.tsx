@@ -174,6 +174,18 @@ export default function HomePage() {
   const [dealCurrency, setDealCurrency] = useState('USD');
   const [dealProbability, setDealProbability] = useState<number>(35);
   const [dealStageId, setDealStageId] = useState('');
+  const [dealDomain, setDealDomain] = useState('');
+  const [dealDomainAcquiredAt, setDealDomainAcquiredAt] = useState('');
+  const [dealDomainExpiresAt, setDealDomainExpiresAt] = useState('');
+  const [dealDomainCost, setDealDomainCost] = useState<number>(0);
+  const [dealDeposit, setDealDeposit] = useState<number>(0);
+  const [dealCosts, setDealCosts] = useState<number>(0);
+  const [dealTaxes, setDealTaxes] = useState<number>(0);
+  const [dealNetTotal, setDealNetTotal] = useState<number>(0);
+  const [dealShareGil, setDealShareGil] = useState<number>(0);
+  const [dealShareRic, setDealShareRic] = useState<number>(0);
+  const [dealWorkType, setDealWorkType] = useState('');
+  const [dealWorkClosedAt, setDealWorkClosedAt] = useState('');
 
   const [projectDealId, setProjectDealId] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -721,6 +733,18 @@ export default function HomePage() {
         contactId,
         pipelineStageId: dealStageId,
         title,
+        domain: dealDomain.trim(),
+        domainAcquiredAt: dateInputToISO(dealDomainAcquiredAt),
+        domainExpiresAt: dateInputToISO(dealDomainExpiresAt),
+        domainCost: Number(dealDomainCost) || 0,
+        deposit: Number(dealDeposit) || 0,
+        costs: Number(dealCosts) || 0,
+        taxes: Number(dealTaxes) || 0,
+        netTotal: Number(dealNetTotal) || 0,
+        shareGil: Number(dealShareGil) || 0,
+        shareRic: Number(dealShareRic) || 0,
+        workType: dealWorkType.trim(),
+        workClosedAt: dateInputToISO(dealWorkClosedAt),
         value: Number(dealValue) || 0,
         currency: dealCurrency.trim() || 'USD',
         probability: Number(dealProbability) || 0,
@@ -729,6 +753,18 @@ export default function HomePage() {
       setDealTitle('');
       setDealValue(0);
       setDealProbability(35);
+      setDealDomain('');
+      setDealDomainAcquiredAt('');
+      setDealDomainExpiresAt('');
+      setDealDomainCost(0);
+      setDealDeposit(0);
+      setDealCosts(0);
+      setDealTaxes(0);
+      setDealNetTotal(0);
+      setDealShareGil(0);
+      setDealShareRic(0);
+      setDealWorkType('');
+      setDealWorkClosedAt('');
       setProjectDealId((prev) => prev || created.id);
       await refresh();
       setNotice('Deal saved.');
@@ -1685,6 +1721,126 @@ export default function HomePage() {
                       />
                     </label>
                   </div>
+                  <details className="rounded-xl border border-sand-200 bg-white p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-sand-800">Job details (domain, costs, taxes)</summary>
+                    <div className="mt-3 grid gap-3">
+                      <label>
+                        <span className="field-label">Domain</span>
+                        <input className="field-input" value={dealDomain} onChange={(e) => setDealDomain(e.target.value)} placeholder="example.com" />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="field-label">Domain Acquired</span>
+                          <input
+                            className="field-input"
+                            type="date"
+                            value={dealDomainAcquiredAt}
+                            onChange={(e) => setDealDomainAcquiredAt(e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Domain Expires</span>
+                          <input
+                            className="field-input"
+                            type="date"
+                            value={dealDomainExpiresAt}
+                            onChange={(e) => setDealDomainExpiresAt(e.target.value)}
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="field-label">Domain Cost</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealDomainCost)}
+                            onChange={(e) => setDealDomainCost(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Work Type</span>
+                          <input
+                            className="field-input"
+                            value={dealWorkType}
+                            onChange={(e) => setDealWorkType(e.target.value)}
+                            placeholder="Website / Support"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="field-label">Deposit (Acconto)</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealDeposit)}
+                            onChange={(e) => setDealDeposit(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Costs</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealCosts)}
+                            onChange={(e) => setDealCosts(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="field-label">Taxes</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealTaxes)}
+                            onChange={(e) => setDealTaxes(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Net Total</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealNetTotal)}
+                            onChange={(e) => setDealNetTotal(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label>
+                          <span className="field-label">Gil</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealShareGil)}
+                            onChange={(e) => setDealShareGil(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Ric</span>
+                          <input
+                            className="field-input"
+                            inputMode="decimal"
+                            value={String(dealShareRic)}
+                            onChange={(e) => setDealShareRic(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span className="field-label">Work Closed</span>
+                        <input className="field-input" type="date" value={dealWorkClosedAt} onChange={(e) => setDealWorkClosedAt(e.target.value)} />
+                      </label>
+                    </div>
+                  </details>
                   <button
                     onClick={() => void onCreateDeal()}
                     className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
@@ -1743,6 +1899,12 @@ export default function HomePage() {
                     const org = orgById.get(d.organizationId);
                     const contact = contactById.get(d.contactId);
                     const stage = stageById.get(d.pipelineStageId);
+                    const metaParts = [
+                      d.domain ? `Domain: ${d.domain}` : '',
+                      d.domainExpiresAt ? `Expires: ${isoToDateInput(d.domainExpiresAt)}` : '',
+                      d.workType ? `Type: ${d.workType}` : '',
+                      d.netTotal ? `Net: ${currency(d.netTotal, d.currency)}` : ''
+                    ].filter(Boolean);
                     return (
                       <div
                         key={d.id}
@@ -1772,6 +1934,7 @@ export default function HomePage() {
                           </div>
                         </div>
                         <div className="mt-2 text-sm text-sand-700">Probability: {d.probability || 0}%</div>
+                        {metaParts.length > 0 && <div className="mt-1 text-sm text-sand-700">{metaParts.join(' · ')}</div>}
                       </div>
                     );
                   })}
@@ -2829,6 +2992,109 @@ export default function HomePage() {
                     value={isoToDateInput(edit.draft.expectedCloseAt)}
                     onChange={(e) => updateEditDraft({ expectedCloseAt: dateInputToISO(e.target.value) })}
                   />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Domain</span>
+                  <input
+                    className="field-input"
+                    value={edit.draft.domain || ''}
+                    onChange={(e) => updateEditDraft({ domain: e.target.value })}
+                    placeholder="example.com"
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Domain Acquired</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.domainAcquiredAt)}
+                    onChange={(e) => updateEditDraft({ domainAcquiredAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Domain Expires</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.domainExpiresAt)}
+                    onChange={(e) => updateEditDraft({ domainExpiresAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Domain Cost</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.domainCost ?? 0)}
+                    onChange={(e) => updateEditDraft({ domainCost: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Deposit (Acconto)</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.deposit ?? 0)}
+                    onChange={(e) => updateEditDraft({ deposit: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Costs</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.costs ?? 0)}
+                    onChange={(e) => updateEditDraft({ costs: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Taxes</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.taxes ?? 0)}
+                    onChange={(e) => updateEditDraft({ taxes: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Net Total</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.netTotal ?? 0)}
+                    onChange={(e) => updateEditDraft({ netTotal: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Work Closed</span>
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={isoToDateInput(edit.draft.workClosedAt)}
+                    onChange={(e) => updateEditDraft({ workClosedAt: dateInputToISO(e.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Gil</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.shareGil ?? 0)}
+                    onChange={(e) => updateEditDraft({ shareGil: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label>
+                  <span className="field-label">Ric</span>
+                  <input
+                    className="field-input"
+                    inputMode="decimal"
+                    value={String(edit.draft.shareRic ?? 0)}
+                    onChange={(e) => updateEditDraft({ shareRic: Number(e.target.value) || 0 })}
+                  />
+                </label>
+                <label className="md:col-span-2">
+                  <span className="field-label">Work Type</span>
+                  <input className="field-input" value={edit.draft.workType || ''} onChange={(e) => updateEditDraft({ workType: e.target.value })} />
                 </label>
                 <label>
                   <span className="field-label">Source</span>

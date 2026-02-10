@@ -44,12 +44,28 @@ const (
 )
 
 type Deal struct {
-	ID              string     `json:"id"`
-	OrganizationID  string     `json:"organizationId"`
-	ContactID       string     `json:"contactId"`
-	PipelineStageID string     `json:"pipelineStageId"`
-	Title           string     `json:"title"`
-	Description     string     `json:"description"`
+	ID              string `json:"id"`
+	OrganizationID  string `json:"organizationId"`
+	ContactID       string `json:"contactId"`
+	PipelineStageID string `json:"pipelineStageId"`
+	Title           string `json:"title"`
+	Description     string `json:"description"`
+
+	// Job tracking (mirrors partner's Excel sheet fields).
+	Domain           string     `json:"domain"`
+	DomainAcquiredAt *time.Time `json:"domainAcquiredAt,omitempty"`
+	DomainExpiresAt  *time.Time `json:"domainExpiresAt,omitempty"`
+	DomainCost       float64    `json:"domainCost"`
+
+	Deposit      float64    `json:"deposit"`
+	Costs        float64    `json:"costs"`
+	Taxes        float64    `json:"taxes"`
+	NetTotal     float64    `json:"netTotal"`
+	ShareGil     float64    `json:"shareGil"`
+	ShareRic     float64    `json:"shareRic"`
+	WorkType     string     `json:"workType"`
+	WorkClosedAt *time.Time `json:"workClosedAt,omitempty"`
+
 	Value           float64    `json:"value"`
 	Currency        string     `json:"currency"`
 	ExpectedCloseAt *time.Time `json:"expectedCloseAt,omitempty"`

@@ -38,6 +38,18 @@ export type Deal = {
   pipelineStageId: string;
   title: string;
   description: string;
+  domain: string;
+  domainAcquiredAt?: string;
+  domainExpiresAt?: string;
+  domainCost: number;
+  deposit: number;
+  costs: number;
+  taxes: number;
+  netTotal: number;
+  shareGil: number;
+  shareRic: number;
+  workType: string;
+  workClosedAt?: string;
   value: number;
   currency: string;
   expectedCloseAt?: string;
