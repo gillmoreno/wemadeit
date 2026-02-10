@@ -44,7 +44,7 @@ import {
   updateSettings
 } from '../lib/api';
 
-const views = ['dashboard', 'pipelines', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'interactions', 'settings'] as const;
+const views = ['dashboard', 'pipelines', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings'] as const;
 type View = (typeof views)[number];
 
 type AppSettings = {
@@ -171,6 +171,7 @@ export default function HomePage() {
   const [contactEmail, setContactEmail] = useState('');
   const [contactJobTitle, setContactJobTitle] = useState('');
   const [contactPrimary, setContactPrimary] = useState(false);
+  const [contactFocusId, setContactFocusId] = useState<string | null>(null);
 
   const [dealOrgId, setDealOrgId] = useState('');
   const [dealContactId, setDealContactId] = useState('');
@@ -229,12 +230,14 @@ export default function HomePage() {
   const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
   const [itemUnitType, setItemUnitType] = useState('hour');
 
-  const [interactionType, setInteractionType] = useState('note');
-  const [interactionSubject, setInteractionSubject] = useState('');
-  const [interactionBody, setInteractionBody] = useState('');
-  const [interactionOrgId, setInteractionOrgId] = useState('');
-  const [interactionContactId, setInteractionContactId] = useState('');
-  const [interactionDealId, setInteractionDealId] = useState('');
+  const [dealInteractionType, setDealInteractionType] = useState('note');
+  const [dealInteractionSubject, setDealInteractionSubject] = useState('');
+  const [dealInteractionBody, setDealInteractionBody] = useState('');
+
+  const [contactInteractionType, setContactInteractionType] = useState('note');
+  const [contactInteractionSubject, setContactInteractionSubject] = useState('');
+  const [contactInteractionBody, setContactInteractionBody] = useState('');
+  const [contactInteractionDealId, setContactInteractionDealId] = useState('');
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
@@ -265,6 +268,12 @@ export default function HomePage() {
   }, [view]);
 
   useEffect(() => {
+    if (view !== 'contacts') {
+      setContactFocusId(null);
+    }
+  }, [view]);
+
+  useEffect(() => {
     if (!dealFocusId) {
       setDealFocusDraft(null);
       setDealFocusMode('view');
@@ -278,6 +287,17 @@ export default function HomePage() {
   useEffect(() => {
     setPaymentSelectedIds([]);
   }, [dealFocusId]);
+
+  useEffect(() => {
+    setDealInteractionSubject('');
+    setDealInteractionBody('');
+  }, [dealFocusId]);
+
+  useEffect(() => {
+    setContactInteractionSubject('');
+    setContactInteractionBody('');
+    setContactInteractionDealId('');
+  }, [contactFocusId]);
 
   useEffect(() => {
     if (!dealStageId && pipelineStages.length > 0) {
@@ -466,6 +486,11 @@ export default function HomePage() {
     return map;
   }, [deals]);
 
+  const focusedContact = useMemo(() => {
+    if (!contactFocusId) return null;
+    return contactById.get(contactFocusId) || null;
+  }, [contactById, contactFocusId]);
+
   const focusedDeal = useMemo(() => {
     if (!dealFocusId) return null;
     return dealById.get(dealFocusId) || null;
@@ -619,6 +644,19 @@ export default function HomePage() {
     });
   }
 
+  function openContactFocus(id: string) {
+    const clean = (id || '').trim();
+    if (!clean) return;
+    setNotice(null);
+    setContextMenu(null);
+    setSelectedIds([]);
+    setContactFocusId(clean);
+  }
+
+  function closeContactFocus() {
+    setContactFocusId(null);
+  }
+
   function openDealFocus(id: string) {
     const clean = (id || '').trim();
     if (!clean) return;
@@ -686,6 +724,9 @@ export default function HomePage() {
           break;
         case 'contact':
           await deleteContacts(clean);
+          if (contactFocusId && clean.includes(contactFocusId)) {
+            closeContactFocus();
+          }
           break;
         case 'deal':
           await deleteDeals(clean);
@@ -1111,25 +1152,54 @@ export default function HomePage() {
     }
   }
 
-  async function onCreateInteraction() {
+  async function onCreateDealInteraction(deal: Deal) {
     setNotice(null);
-    const body = interactionBody.trim();
-    if (!body && !interactionSubject.trim()) {
+    const subject = dealInteractionSubject.trim();
+    const body = dealInteractionBody.trim();
+    if (!body && !subject) {
       setNotice('Add a subject or body.');
       return;
     }
     try {
       await createInteraction({
-        interactionType: interactionType.trim(),
-        subject: interactionSubject.trim(),
+        interactionType: dealInteractionType.trim(),
+        subject,
         body,
-        organizationId: interactionOrgId.trim(),
-        contactId: interactionContactId.trim(),
-        dealId: interactionDealId.trim(),
+        organizationId: deal.organizationId,
+        contactId: deal.contactId,
+        dealId: deal.id,
         occurredAt: new Date().toISOString()
       });
-      setInteractionSubject('');
-      setInteractionBody('');
+      setDealInteractionSubject('');
+      setDealInteractionBody('');
+      await refresh();
+      setNotice('Interaction saved.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create interaction';
+      setNotice(msg);
+    }
+  }
+
+  async function onCreateContactInteraction(contact: Contact) {
+    setNotice(null);
+    const subject = contactInteractionSubject.trim();
+    const body = contactInteractionBody.trim();
+    if (!body && !subject) {
+      setNotice('Add a subject or body.');
+      return;
+    }
+    try {
+      await createInteraction({
+        interactionType: contactInteractionType.trim(),
+        subject,
+        body,
+        organizationId: contact.organizationId,
+        contactId: contact.id,
+        dealId: contactInteractionDealId.trim(),
+        occurredAt: new Date().toISOString()
+      });
+      setContactInteractionSubject('');
+      setContactInteractionBody('');
       await refresh();
       setNotice('Interaction saved.');
     } catch (err) {
@@ -1650,7 +1720,233 @@ export default function HomePage() {
             </div>
           )}
 
-          {view === 'contacts' && (
+          {view === 'contacts' &&
+            contactFocusId &&
+            (() => {
+              const c = focusedContact;
+              if (!c) {
+                return (
+                  <div className="panel animate-enter p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => closeContactFocus()}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                      >
+                        Back to contacts
+                      </button>
+                    </div>
+                    <div className="mt-6 text-sm text-sand-700">Contact not found (it may have been deleted).</div>
+                  </div>
+                );
+              }
+
+              const org = orgById.get(c.organizationId);
+              const dealsForContact = deals.filter((d) => d.contactId === c.id);
+              const contactInteractions = interactions.filter((i) => i.contactId === c.id);
+
+              return (
+                <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+                  <div className="panel animate-enter p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => closeContactFocus()}
+                        className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                      >
+                        Back to contacts
+                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit('contact', c)}
+                          className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                          disabled={crudBusy}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => askDelete('contact', [c.id])}
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                          disabled={crudBusy}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Contact</div>
+                      <div className="mt-2 text-3xl font-semibold text-sand-900">
+                        {c.firstName} {c.lastName}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {c.primaryContact && <span className="pill">PRIMARY</span>}
+                        {c.jobTitle ? <span className="pill">{c.jobTitle}</span> : null}
+                        <span className="pill">CONTACT</span>
+                      </div>
+                      <div className="mt-3 text-sm text-sand-700">{org?.name || 'Unknown org'}</div>
+                    {(c.email || c.phone || c.mobile || c.linkedinUrl) && (
+                      <div className="mt-4 grid gap-1 text-sm text-sand-700">
+                        {c.email ? <div>Email: {c.email}</div> : null}
+                        {c.phone ? <div>Phone: {c.phone}</div> : null}
+                        {c.mobile ? <div>Mobile: {c.mobile}</div> : null}
+                        {c.linkedinUrl ? (
+                          <div>
+                            LinkedIn:{' '}
+                            <a
+                              className="underline decoration-sand-300 underline-offset-4 hover:text-sand-900"
+                              href={c.linkedinUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {c.linkedinUrl}
+                            </a>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  {c.notes && (
+                    <div className="mt-6 rounded-xl border border-sand-200 bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Notes</div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-sand-700">{c.notes}</div>
+                    </div>
+                  )}
+
+                  {dealsForContact.length > 0 && (
+                    <div className="mt-6 rounded-xl border border-sand-200 bg-white p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Deals</div>
+                      <div className="mt-3 grid gap-2">
+                        {dealsForContact.map((d) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => {
+                                setView('deals');
+                                openDealFocus(d.id);
+                              }}
+                              className="rounded-xl border border-sand-200 bg-white px-3 py-2 text-left text-sm text-stone-900 transition hover:bg-sand-50"
+                            >
+                              <div className="font-semibold">{d.title}</div>
+                              <div className="mt-1 text-xs text-sand-700">
+                                {currency(d.value, d.currency)} · {d.status}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-6 border-t border-sand-200 pt-6">
+                      <h3 className="text-2xl font-semibold text-sand-900">Add Interaction</h3>
+                      <div className="mt-4 grid gap-4">
+                        <label>
+                          <span className="field-label">Type</span>
+                          <select
+                            className="field-input"
+                            value={contactInteractionType}
+                            onChange={(e) => setContactInteractionType(e.target.value)}
+                          >
+                            <option value="note">note</option>
+                            <option value="call">call</option>
+                            <option value="email">email</option>
+                            <option value="meeting">meeting</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="field-label">Attach to deal (optional)</span>
+                          <select
+                            className="field-input"
+                            value={contactInteractionDealId}
+                            onChange={(e) => setContactInteractionDealId(e.target.value)}
+                          >
+                            <option value="">None</option>
+                            {dealsForContact.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span className="field-label">Subject</span>
+                          <input
+                            className="field-input"
+                            value={contactInteractionSubject}
+                            onChange={(e) => setContactInteractionSubject(e.target.value)}
+                            placeholder="Follow up"
+                          />
+                        </label>
+                        <label>
+                          <span className="field-label">Body</span>
+                          <textarea
+                            className="field-input"
+                            value={contactInteractionBody}
+                            onChange={(e) => setContactInteractionBody(e.target.value)}
+                            placeholder="Notes, summary, next steps..."
+                            rows={6}
+                          />
+                        </label>
+                        <button
+                          onClick={() => void onCreateContactInteraction(c)}
+                          className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-3xl text-sand-900">Interactions</h2>
+                      <div className="pill">{contactInteractions.length}</div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3">
+                      {contactInteractions.length === 0 && (
+                        <div className="text-sm text-sand-700">No interactions yet for this contact.</div>
+                      )}
+                      {contactInteractions.map((i) => {
+                        const deal = dealById.get(i.dealId);
+                        const when = i.occurredAt ? new Date(i.occurredAt).toLocaleString() : '';
+                        return (
+                          <div
+                            key={i.id}
+                            className="rounded-2xl border border-sand-200 bg-white p-5"
+                            onContextMenu={(e) => onItemContextMenu(e, 'interaction', i)}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-lg font-semibold text-stone-900">{i.subject || '(No subject)'}</div>
+                                <div className="mt-1 text-sm text-sand-700">{deal ? `Deal: ${deal.title}` : 'Contact-only'}</div>
+                              </div>
+                              <div className="flex flex-wrap items-start gap-2">
+                                <span className="pill">{i.interactionType}</span>
+                                {when && <span className="pill">{when}</span>}
+                                <button
+                                  type="button"
+                                  onClick={(e) => onItemActionsClick(e, 'interaction', i)}
+                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                >
+                                  ...
+                                </button>
+                              </div>
+                            </div>
+                            {i.body && <div className="mt-3 whitespace-pre-wrap text-sm text-stone-900">{i.body}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+          {view === 'contacts' && !contactFocusId && (
             <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
               <div className="panel animate-enter p-6">
                 <h2 className="text-3xl text-sand-900">New Contact</h2>
@@ -1745,11 +2041,18 @@ export default function HomePage() {
                     return (
                       <div
                         key={c.id}
-                        className="rounded-xl border border-sand-200 bg-white p-4"
+                        className="cursor-pointer rounded-xl border border-sand-200 bg-white p-4 transition hover:bg-sand-50"
+                        onClick={() => openContactFocus(c.id)}
                         onContextMenu={(e) => onItemContextMenu(e, 'contact', c)}
                       >
                         <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={selectedSet.has(c.id)} onChange={() => toggleSelected(c.id)} className="mt-1" />
+                          <input
+                            type="checkbox"
+                            checked={selectedSet.has(c.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={() => toggleSelected(c.id)}
+                            className="mt-1"
+                          />
                           <div className="min-w-0 flex-1">
                             <div className="text-lg font-semibold text-stone-900">
                               {c.firstName} {c.lastName}
@@ -1810,6 +2113,8 @@ export default function HomePage() {
                     const stage = stageById.get(d.pipelineStageId);
                     const draft = dealFocusDraft || d;
                     const dealPayments = paymentsByDealId.get(d.id) || [];
+                    const dealInteractions = interactions.filter((i) => i.dealId === d.id);
+                    const contactInteractions = interactions.filter((i) => i.contactId === d.contactId);
                     const paidPayments = dealPayments.filter((p) => p.status === 'paid');
                     const plannedPayments = dealPayments.filter((p) => p.status === 'planned');
                     const totalContract = (d.value || 0) + (d.taxes || 0);
@@ -2258,6 +2563,116 @@ export default function HomePage() {
                                       </div>
                                     </div>
                                   ))}
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border border-sand-200 bg-white p-4 lg:col-span-2">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Interactions</div>
+                                    <div className="mt-2 text-sm text-sand-700">
+                                      {contactInteractions.length === 0
+                                        ? 'No interactions yet.'
+                                        : `${dealInteractions.length} on this deal · ${contactInteractions.length} with this contact`}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                  <label>
+                                    <span className="field-label">Type</span>
+                                    <select
+                                      className="field-input"
+                                      value={dealInteractionType}
+                                      onChange={(e) => setDealInteractionType(e.target.value)}
+                                      disabled={crudBusy}
+                                    >
+                                      <option value="note">note</option>
+                                      <option value="call">call</option>
+                                      <option value="email">email</option>
+                                      <option value="meeting">meeting</option>
+                                    </select>
+                                  </label>
+
+                                  <label>
+                                    <span className="field-label">Subject</span>
+                                    <input
+                                      className="field-input"
+                                      value={dealInteractionSubject}
+                                      onChange={(e) => setDealInteractionSubject(e.target.value)}
+                                      placeholder="Follow up"
+                                      disabled={crudBusy}
+                                    />
+                                  </label>
+
+                                  <label className="md:col-span-2">
+                                    <span className="field-label">Body</span>
+                                    <textarea
+                                      className="field-input"
+                                      value={dealInteractionBody}
+                                      onChange={(e) => setDealInteractionBody(e.target.value)}
+                                      placeholder="Notes, summary, next steps..."
+                                      rows={4}
+                                      disabled={crudBusy}
+                                    />
+                                  </label>
+
+                                  <div className="md:col-span-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void onCreateDealInteraction(d)}
+                                      className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                      disabled={crudBusy}
+                                    >
+                                      Save interaction
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-3">
+                                  {contactInteractions.length === 0 && (
+                                    <div className="text-sm text-sand-700">No interactions yet for this deal or contact.</div>
+                                  )}
+                                  {contactInteractions.map((i) => {
+                                    const when = i.occurredAt ? new Date(i.occurredAt).toLocaleString() : '';
+                                    const linkedDeal = dealById.get(i.dealId);
+                                    return (
+                                      <div
+                                        key={i.id}
+                                        className="rounded-xl border border-sand-200 bg-white p-4"
+                                        onContextMenu={(e) => onItemContextMenu(e, 'interaction', i)}
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-semibold text-stone-900">{i.subject || '(No subject)'}</div>
+                                            {i.dealId && i.dealId !== d.id && (
+                                              <div className="mt-1 text-xs text-sand-700">Deal: {linkedDeal?.title || i.dealId}</div>
+                                            )}
+                                            {i.body && <div className="mt-2 whitespace-pre-wrap text-sm text-sand-700">{i.body}</div>}
+                                          </div>
+                                          <div className="flex flex-wrap items-start gap-2">
+                                            <span className="pill">{i.interactionType}</span>
+                                            {when && <span className="pill">{when}</span>}
+                                            {i.dealId === d.id ? (
+                                              <span className="pill">THIS DEAL</span>
+                                            ) : i.dealId ? (
+                                              <span className="pill">OTHER DEAL</span>
+                                            ) : (
+                                              <span className="pill">CONTACT</span>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={(e) => onItemActionsClick(e, 'interaction', i)}
+                                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                              disabled={crudBusy}
+                                            >
+                                              ...
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
 
@@ -3085,166 +3500,6 @@ export default function HomePage() {
                           </div>
                         )}
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {view === 'interactions' && (
-            <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-              <div className="panel animate-enter p-6">
-                <h2 className="text-3xl text-sand-900">New Interaction</h2>
-                <div className="mt-4 grid gap-4">
-                  <label>
-                    <span className="field-label">Type</span>
-                    <select className="field-input" value={interactionType} onChange={(e) => setInteractionType(e.target.value)}>
-                      <option value="note">note</option>
-                      <option value="call">call</option>
-                      <option value="email">email</option>
-                      <option value="meeting">meeting</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Organization (optional)</span>
-                    <select className="field-input" value={interactionOrgId} onChange={(e) => setInteractionOrgId(e.target.value)}>
-                      <option value="">None</option>
-                      {organizations.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Contact (optional)</span>
-                    <select className="field-input" value={interactionContactId} onChange={(e) => setInteractionContactId(e.target.value)}>
-                      <option value="">None</option>
-                      {contacts
-                        .filter((c) => !interactionOrgId || c.organizationId === interactionOrgId)
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.firstName} {c.lastName}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Deal (optional)</span>
-                    <select className="field-input" value={interactionDealId} onChange={(e) => setInteractionDealId(e.target.value)}>
-                      <option value="">None</option>
-                      {deals.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Subject</span>
-                    <input
-                      className="field-input"
-                      value={interactionSubject}
-                      onChange={(e) => setInteractionSubject(e.target.value)}
-                      placeholder="Follow up"
-                    />
-                  </label>
-                  <label>
-                    <span className="field-label">Body</span>
-                    <textarea
-                      className="field-input"
-                      value={interactionBody}
-                      onChange={(e) => setInteractionBody(e.target.value)}
-                      placeholder="Notes, summary, next steps..."
-                      rows={6}
-                    />
-                  </label>
-                  <button
-                    onClick={() => void onCreateInteraction()}
-                    className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-3xl text-sand-900">Interactions</h2>
-                  {interactions.length > 0 && (
-                    <label className="flex items-center gap-2 text-sm text-sand-700">
-                      <input
-                        type="checkbox"
-                        checked={interactions.length > 0 && interactions.every((i) => selectedSet.has(i.id))}
-                        onChange={(e) => selectAll(interactions.map((i) => i.id), e.target.checked)}
-                      />
-                      Select all
-                    </label>
-                  )}
-                </div>
-
-                {selectedIds.length > 0 && (
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
-                    <div>
-                      Selected: <span className="font-semibold">{selectedIds.length}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => askDelete('interaction', selectedIds)}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
-                        disabled={crudBusy}
-                      >
-                        Delete selected
-                      </button>
-                      <button
-                        onClick={() => setSelectedIds([])}
-                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                        disabled={crudBusy}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 grid gap-3">
-                  {interactions.length === 0 && <div className="text-sm text-sand-700">No interactions yet.</div>}
-                  {interactions.map((i) => {
-                    const org = orgById.get(i.organizationId);
-                    const contact = contactById.get(i.contactId);
-                    const deal = dealById.get(i.dealId);
-                    const when = i.occurredAt ? new Date(i.occurredAt).toLocaleString() : '';
-                    return (
-                      <div
-                        key={i.id}
-                        className="rounded-2xl border border-sand-200 bg-white p-5"
-                        onContextMenu={(e) => onItemContextMenu(e, 'interaction', i)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={selectedSet.has(i.id)} onChange={() => toggleSelected(i.id)} className="mt-1" />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-lg font-semibold text-stone-900">{i.subject || '(No subject)'}</div>
-                            <div className="mt-1 text-sm text-sand-700">
-                              {org?.name || 'No org'}
-                              {contact ? ` · ${contact.firstName} ${contact.lastName}` : ''}
-                              {deal ? ` · ${deal.title}` : ''}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-start gap-2">
-                            <span className="pill">{i.interactionType}</span>
-                            {when && <span className="pill">{when}</span>}
-                            <button
-                              type="button"
-                              onClick={(e) => onItemActionsClick(e, 'interaction', i)}
-                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                            >
-                              ...
-                            </button>
-                          </div>
-                        </div>
-                        {i.body && <div className="mt-3 whitespace-pre-wrap text-sm text-stone-900">{i.body}</div>}
-                      </div>
                     );
                   })}
                 </div>
