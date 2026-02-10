@@ -186,6 +186,9 @@ export default function HomePage() {
   const [dealShareRic, setDealShareRic] = useState<number>(0);
   const [dealWorkType, setDealWorkType] = useState('');
   const [dealWorkClosedAt, setDealWorkClosedAt] = useState('');
+  const [dealFocusId, setDealFocusId] = useState<string | null>(null);
+  const [dealFocusMode, setDealFocusMode] = useState<'view' | 'edit'>('view');
+  const [dealFocusDraft, setDealFocusDraft] = useState<Partial<Deal> | null>(null);
 
   const [projectDealId, setProjectDealId] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -245,6 +248,25 @@ export default function HomePage() {
     const theme = (settings?.theme || 'sand').toLowerCase();
     document.documentElement.dataset.theme = theme;
   }, [settings?.theme]);
+
+  useEffect(() => {
+    if (view !== 'deals') {
+      setDealFocusId(null);
+      setDealFocusMode('view');
+      setDealFocusDraft(null);
+    }
+  }, [view]);
+
+  useEffect(() => {
+    if (!dealFocusId) {
+      setDealFocusDraft(null);
+      setDealFocusMode('view');
+      return;
+    }
+    if (dealFocusMode === 'edit') return;
+    const d = deals.find((x) => x.id === dealFocusId);
+    if (d) setDealFocusDraft({ ...d });
+  }, [dealFocusId, deals, dealFocusMode]);
 
   useEffect(() => {
     if (!dealStageId && pipelineStages.length > 0) {
@@ -431,6 +453,11 @@ export default function HomePage() {
     return map;
   }, [deals]);
 
+  const focusedDeal = useMemo(() => {
+    if (!dealFocusId) return null;
+    return dealById.get(dealFocusId) || null;
+  }, [dealById, dealFocusId]);
+
   const projectById = useMemo(() => {
     const map = new Map<string, Project>();
     projects.forEach((p) => map.set(p.id, p));
@@ -531,6 +558,13 @@ export default function HomePage() {
   function startEdit(kind: CrudKind, item: any) {
     setNotice(null);
     setContextMenu(null);
+    if (kind === 'deal') {
+      setView('deals');
+      openDealFocus(String(item?.id || ''));
+      setDealFocusDraft({ ...item });
+      setDealFocusMode('edit');
+      return;
+    }
     setEdit({ kind, draft: { ...item } });
   }
 
@@ -542,6 +576,58 @@ export default function HomePage() {
       ids,
       label: labelFor(kind, ids.length)
     });
+  }
+
+  function openDealFocus(id: string) {
+    const clean = (id || '').trim();
+    if (!clean) return;
+    setNotice(null);
+    setContextMenu(null);
+    setSelectedIds([]);
+    setDealFocusId(clean);
+    setDealFocusMode('view');
+    const d = deals.find((x) => x.id === clean);
+    if (d) setDealFocusDraft({ ...d });
+  }
+
+  function closeDealFocus() {
+    setDealFocusId(null);
+    setDealFocusMode('view');
+    setDealFocusDraft(null);
+  }
+
+  function updateDealFocusDraft(patch: Record<string, any>) {
+    setDealFocusDraft((prev) => {
+      const base = prev || {};
+      return { ...base, ...patch };
+    });
+  }
+
+  async function saveDealFocusDraft() {
+    if (!dealFocusDraft || crudBusy) return;
+    setCrudBusy(true);
+    setNotice(null);
+    try {
+      if (!String(dealFocusDraft.title || '').trim()) {
+        throw new Error('title is required');
+      }
+      if (!String(dealFocusDraft.organizationId || '').trim()) {
+        throw new Error('organizationId is required');
+      }
+      if (!String(dealFocusDraft.contactId || '').trim()) {
+        throw new Error('contactId is required');
+      }
+      const saved = await createDeal(dealFocusDraft);
+      await refresh();
+      setDealFocusId(saved.id);
+      setDealFocusMode('view');
+      setNotice('Saved.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Save failed';
+      setNotice(msg);
+    } finally {
+      setCrudBusy(false);
+    }
   }
 
   async function runDelete(kind: CrudKind, ids: string[]) {
@@ -560,6 +646,9 @@ export default function HomePage() {
           break;
         case 'deal':
           await deleteDeals(clean);
+          if (dealFocusId && clean.includes(dealFocusId)) {
+            closeDealFocus();
+          }
           break;
         case 'pipeline':
           await deletePipelines(clean);
@@ -1645,302 +1734,662 @@ export default function HomePage() {
           )}
 
           {view === 'deals' && (
-            <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-              <div className="panel animate-enter p-6">
-                <h2 className="text-3xl text-sand-900">New Deal</h2>
-                <div className="mt-4 grid gap-4">
-                  <label>
-                    <span className="field-label">Organization</span>
-                    <select
-                      className="field-input"
-                      value={dealOrgId}
-                      onChange={(e) => {
-                        setDealOrgId(e.target.value);
-                        setDealContactId('');
-                      }}
-                    >
-                      <option value="">Select...</option>
-                      {organizations.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Contact</span>
-                    <select className="field-input" value={dealContactId} onChange={(e) => setDealContactId(e.target.value)}>
-                      <option value="">Select...</option>
-                      {contacts
-                        .filter((c) => !dealOrgId || c.organizationId === dealOrgId)
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.firstName} {c.lastName}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Stage</span>
-                    <select className="field-input" value={dealStageId} onChange={(e) => setDealStageId(e.target.value)}>
-                      <option value="">None</option>
-                      {pipelineStages.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          {st.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span className="field-label">Title</span>
-                    <input className="field-input" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Retainer renewal" />
-                  </label>
-                  <label>
-                    <span className="field-label">Value</span>
-                    <input
-                      className="field-input"
-                      value={String(dealValue)}
-                      onChange={(e) => setDealValue(Number(e.target.value))}
-                      inputMode="decimal"
-                      placeholder="0"
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label>
-                      <span className="field-label">Currency</span>
-                      <input className="field-input" value={dealCurrency} onChange={(e) => setDealCurrency(e.target.value)} placeholder="USD" />
-                    </label>
-                    <label>
-                      <span className="field-label">Probability (%)</span>
-                      <input
-                        className="field-input"
-                        value={String(dealProbability)}
-                        onChange={(e) => setDealProbability(Number(e.target.value))}
-                        inputMode="numeric"
-                        placeholder="35"
-                      />
-                    </label>
-                  </div>
-                  <details className="rounded-xl border border-sand-200 bg-white p-3">
-                    <summary className="cursor-pointer text-sm font-semibold text-sand-800">Job details (domain, costs, taxes)</summary>
-                    <div className="mt-3 grid gap-3">
-                      <label>
-                        <span className="field-label">Domain</span>
-                        <input className="field-input" value={dealDomain} onChange={(e) => setDealDomain(e.target.value)} placeholder="example.com" />
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="field-label">Domain Acquired</span>
-                          <input
-                            className="field-input"
-                            type="date"
-                            value={dealDomainAcquiredAt}
-                            onChange={(e) => setDealDomainAcquiredAt(e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <span className="field-label">Domain Expires</span>
-                          <input
-                            className="field-input"
-                            type="date"
-                            value={dealDomainExpiresAt}
-                            onChange={(e) => setDealDomainExpiresAt(e.target.value)}
-                          />
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="field-label">Domain Cost</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealDomainCost)}
-                            onChange={(e) => setDealDomainCost(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                        <label>
-                          <span className="field-label">Work Type</span>
-                          <input
-                            className="field-input"
-                            value={dealWorkType}
-                            onChange={(e) => setDealWorkType(e.target.value)}
-                            placeholder="Website / Support"
-                          />
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="field-label">Deposit (Acconto)</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealDeposit)}
-                            onChange={(e) => setDealDeposit(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                        <label>
-                          <span className="field-label">Costs</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealCosts)}
-                            onChange={(e) => setDealCosts(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="field-label">Taxes</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealTaxes)}
-                            onChange={(e) => setDealTaxes(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                        <label>
-                          <span className="field-label">Net Total</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealNetTotal)}
-                            onChange={(e) => setDealNetTotal(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label>
-                          <span className="field-label">Gil</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealShareGil)}
-                            onChange={(e) => setDealShareGil(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                        <label>
-                          <span className="field-label">Ric</span>
-                          <input
-                            className="field-input"
-                            inputMode="decimal"
-                            value={String(dealShareRic)}
-                            onChange={(e) => setDealShareRic(Number(e.target.value))}
-                            placeholder="0"
-                          />
-                        </label>
-                      </div>
-                      <label>
-                        <span className="field-label">Work Closed</span>
-                        <input className="field-input" type="date" value={dealWorkClosedAt} onChange={(e) => setDealWorkClosedAt(e.target.value)} />
-                      </label>
-                    </div>
-                  </details>
-                  <button
-                    onClick={() => void onCreateDeal()}
-                    className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
-                    disabled={organizations.length === 0 || contacts.length === 0}
-                  >
-                    Save
-                  </button>
-                  {(organizations.length === 0 || contacts.length === 0) && (
-                    <div className="text-sm text-sand-700">Create an organization and contact first.</div>
-                  )}
-                </div>
-              </div>
+            <>
+              {dealFocusId
+                ? (() => {
+                    const d = focusedDeal;
+                    if (!d) {
+                      return (
+                        <div className="panel animate-enter p-6">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => closeDealFocus()}
+                              className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                            >
+                              Back
+                            </button>
+                          </div>
+                          <div className="mt-6 text-sm text-sand-700">Deal not found (it may have been deleted).</div>
+                        </div>
+                      );
+                    }
 
-              <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-3xl text-sand-900">Deals</h2>
-                  {deals.length > 0 && (
-                    <label className="flex items-center gap-2 text-sm text-sand-700">
-                      <input
-                        type="checkbox"
-                        checked={deals.length > 0 && deals.every((d) => selectedSet.has(d.id))}
-                        onChange={(e) => selectAll(deals.map((d) => d.id), e.target.checked)}
-                      />
-                      Select all
-                    </label>
-                  )}
-                </div>
-
-                {selectedIds.length > 0 && (
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
-                    <div>
-                      Selected: <span className="font-semibold">{selectedIds.length}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => askDelete('deal', selectedIds)}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
-                        disabled={crudBusy}
-                      >
-                        Delete selected
-                      </button>
-                      <button
-                        onClick={() => setSelectedIds([])}
-                        className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                        disabled={crudBusy}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 grid gap-3">
-                  {deals.length === 0 && <div className="text-sm text-sand-700">No deals yet.</div>}
-                  {deals.map((d) => {
                     const org = orgById.get(d.organizationId);
                     const contact = contactById.get(d.contactId);
                     const stage = stageById.get(d.pipelineStageId);
-                    const metaParts = [
-                      d.domain ? `Domain: ${d.domain}` : '',
-                      d.domainExpiresAt ? `Expires: ${isoToDateInput(d.domainExpiresAt)}` : '',
-                      d.workType ? `Type: ${d.workType}` : '',
-                      d.netTotal ? `Net: ${currency(d.netTotal, d.currency)}` : ''
-                    ].filter(Boolean);
+                    const draft = dealFocusDraft || d;
+
                     return (
-                      <div
-                        key={d.id}
-                        className="rounded-xl border border-sand-200 bg-white p-4"
-                        onContextMenu={(e) => onItemContextMenu(e, 'deal', d)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={selectedSet.has(d.id)} onChange={() => toggleSelected(d.id)} className="mt-1" />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-lg font-semibold text-stone-900">{d.title}</div>
-                            <div className="mt-1 text-sm text-sand-700">
-                              {org?.name || 'Unknown org'}
-                              {contact ? ` · ${contact.firstName} ${contact.lastName}` : ''}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-start gap-2">
-                            <span className="pill">{d.status}</span>
-                            {stage && <span className="pill">{stage.name}</span>}
-                            <span className="pill">{currency(d.value, d.currency)}</span>
+                      <div className="grid gap-6">
+                        <div className="panel animate-enter p-6">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
                             <button
                               type="button"
-                              onClick={(e) => onItemActionsClick(e, 'deal', d)}
-                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                              onClick={() => closeDealFocus()}
+                              className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
                             >
-                              ...
+                              Back to deals
                             </button>
+                            <div className="flex flex-wrap gap-2">
+                              {dealFocusMode === 'edit' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDealFocusMode('view');
+                                      setDealFocusDraft({ ...d });
+                                    }}
+                                    className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                    disabled={crudBusy}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void saveDealFocusDraft()}
+                                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                    disabled={crudBusy}
+                                  >
+                                    Save
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDealFocusDraft({ ...d });
+                                      setDealFocusMode('edit');
+                                    }}
+                                    className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => askDelete('deal', [d.id])}
+                                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
+
+                          <div className="mt-5">
+                            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Deal</div>
+                            <div className="mt-2 text-3xl font-semibold text-sand-900">{d.title}</div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="pill">{d.status}</span>
+                              {stage && <span className="pill">{stage.name}</span>}
+                              <span className="pill">{currency(d.value, d.currency)}</span>
+                              {d.netTotal ? <span className="pill">Net {currency(d.netTotal, d.currency)}</span> : null}
+                              {d.domain ? <span className="pill">{d.domain}</span> : null}
+                            </div>
+                            <div className="mt-3 text-sm text-sand-700">
+                              {(org?.name || 'Unknown org') + (contact ? ` · ${contact.firstName} ${contact.lastName}` : '')}
+                            </div>
+                          </div>
+
+                          {dealFocusMode === 'edit' ? (
+                            <div className="mt-6 grid gap-4 md:grid-cols-2">
+                              <label className="md:col-span-2">
+                                <span className="field-label">Title</span>
+                                <input className="field-input" value={draft.title || ''} onChange={(e) => updateDealFocusDraft({ title: e.target.value })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Organization</span>
+                                <select
+                                  className="field-input"
+                                  value={draft.organizationId || ''}
+                                  onChange={(e) => updateDealFocusDraft({ organizationId: e.target.value, contactId: '' })}
+                                >
+                                  <option value="">Select...</option>
+                                  {organizations.map((o) => (
+                                    <option key={o.id} value={o.id}>
+                                      {o.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span className="field-label">Contact</span>
+                                <select
+                                  className="field-input"
+                                  value={draft.contactId || ''}
+                                  onChange={(e) => updateDealFocusDraft({ contactId: e.target.value })}
+                                >
+                                  <option value="">Select...</option>
+                                  {contacts
+                                    .filter((c) => !draft.organizationId || c.organizationId === draft.organizationId)
+                                    .map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.firstName} {c.lastName}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span className="field-label">Stage</span>
+                                <select
+                                  className="field-input"
+                                  value={draft.pipelineStageId || ''}
+                                  onChange={(e) => updateDealFocusDraft({ pipelineStageId: e.target.value })}
+                                >
+                                  <option value="">None</option>
+                                  {pipelineStages.map((st) => (
+                                    <option key={st.id} value={st.id}>
+                                      {st.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span className="field-label">Status</span>
+                                <select className="field-input" value={draft.status || 'open'} onChange={(e) => updateDealFocusDraft({ status: e.target.value })}>
+                                  <option value="open">open</option>
+                                  <option value="won">won</option>
+                                  <option value="lost">lost</option>
+                                </select>
+                              </label>
+                              <label>
+                                <span className="field-label">Work Type</span>
+                                <input className="field-input" value={draft.workType || ''} onChange={(e) => updateDealFocusDraft({ workType: e.target.value })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Work Closed</span>
+                                <input
+                                  className="field-input"
+                                  type="date"
+                                  value={isoToDateInput(draft.workClosedAt as any)}
+                                  onChange={(e) => updateDealFocusDraft({ workClosedAt: dateInputToISO(e.target.value) })}
+                                />
+                              </label>
+                              <label className="md:col-span-2">
+                                <span className="field-label">Domain</span>
+                                <input className="field-input" value={draft.domain || ''} onChange={(e) => updateDealFocusDraft({ domain: e.target.value })} placeholder="example.com" />
+                              </label>
+                              <label>
+                                <span className="field-label">Domain Acquired</span>
+                                <input
+                                  className="field-input"
+                                  type="date"
+                                  value={isoToDateInput(draft.domainAcquiredAt as any)}
+                                  onChange={(e) => updateDealFocusDraft({ domainAcquiredAt: dateInputToISO(e.target.value) })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Domain Expires</span>
+                                <input
+                                  className="field-input"
+                                  type="date"
+                                  value={isoToDateInput(draft.domainExpiresAt as any)}
+                                  onChange={(e) => updateDealFocusDraft({ domainExpiresAt: dateInputToISO(e.target.value) })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Domain Cost</span>
+                                <input
+                                  className="field-input"
+                                  inputMode="decimal"
+                                  value={String((draft.domainCost as any) ?? 0)}
+                                  onChange={(e) => updateDealFocusDraft({ domainCost: Number(e.target.value) || 0 })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Value (Preventivo)</span>
+                                <input
+                                  className="field-input"
+                                  inputMode="decimal"
+                                  value={String((draft.value as any) ?? 0)}
+                                  onChange={(e) => updateDealFocusDraft({ value: Number(e.target.value) || 0 })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Currency</span>
+                                <input className="field-input" value={draft.currency || ''} onChange={(e) => updateDealFocusDraft({ currency: e.target.value })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Deposit (Acconto)</span>
+                                <input
+                                  className="field-input"
+                                  inputMode="decimal"
+                                  value={String((draft.deposit as any) ?? 0)}
+                                  onChange={(e) => updateDealFocusDraft({ deposit: Number(e.target.value) || 0 })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Costs</span>
+                                <input className="field-input" inputMode="decimal" value={String((draft.costs as any) ?? 0)} onChange={(e) => updateDealFocusDraft({ costs: Number(e.target.value) || 0 })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Taxes</span>
+                                <input className="field-input" inputMode="decimal" value={String((draft.taxes as any) ?? 0)} onChange={(e) => updateDealFocusDraft({ taxes: Number(e.target.value) || 0 })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Net Total</span>
+                                <input
+                                  className="field-input"
+                                  inputMode="decimal"
+                                  value={String((draft.netTotal as any) ?? 0)}
+                                  onChange={(e) => updateDealFocusDraft({ netTotal: Number(e.target.value) || 0 })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Gil</span>
+                                <input className="field-input" inputMode="decimal" value={String((draft.shareGil as any) ?? 0)} onChange={(e) => updateDealFocusDraft({ shareGil: Number(e.target.value) || 0 })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Ric</span>
+                                <input className="field-input" inputMode="decimal" value={String((draft.shareRic as any) ?? 0)} onChange={(e) => updateDealFocusDraft({ shareRic: Number(e.target.value) || 0 })} />
+                              </label>
+                              <label>
+                                <span className="field-label">Probability (%)</span>
+                                <input
+                                  className="field-input"
+                                  inputMode="numeric"
+                                  value={String((draft.probability as any) ?? 0)}
+                                  onChange={(e) => updateDealFocusDraft({ probability: Number(e.target.value) || 0 })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Expected Close</span>
+                                <input
+                                  className="field-input"
+                                  type="date"
+                                  value={isoToDateInput(draft.expectedCloseAt as any)}
+                                  onChange={(e) => updateDealFocusDraft({ expectedCloseAt: dateInputToISO(e.target.value) })}
+                                />
+                              </label>
+                              <label>
+                                <span className="field-label">Source</span>
+                                <input className="field-input" value={draft.source || ''} onChange={(e) => updateDealFocusDraft({ source: e.target.value })} />
+                              </label>
+                              <label className="md:col-span-2">
+                                <span className="field-label">Description</span>
+                                <textarea className="field-input" rows={4} value={(draft.description as any) || ''} onChange={(e) => updateDealFocusDraft({ description: e.target.value })} />
+                              </label>
+                              <label className="md:col-span-2">
+                                <span className="field-label">Notes</span>
+                                <textarea className="field-input" rows={3} value={(draft.notes as any) || ''} onChange={(e) => updateDealFocusDraft({ notes: e.target.value })} />
+                              </label>
+                              <label className="md:col-span-2">
+                                <span className="field-label">Lost Reason</span>
+                                <input className="field-input" value={draft.lostReason || ''} onChange={(e) => updateDealFocusDraft({ lostReason: e.target.value })} />
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                              <div className="rounded-xl border border-sand-200 bg-white p-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Client</div>
+                                <div className="mt-2 text-lg font-semibold text-stone-900">{org?.name || 'Unknown org'}</div>
+                                {contact && (
+                                  <div className="mt-1 text-sm text-sand-700">
+                                    {contact.firstName} {contact.lastName}
+                                    {contact.email ? ` · ${contact.email}` : ''}
+                                  </div>
+                                )}
+                                {org?.website && <div className="mt-2 text-sm text-sand-700">{org.website}</div>}
+                              </div>
+
+                              <div className="rounded-xl border border-sand-200 bg-white p-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Domain</div>
+                                <div className="mt-2 text-lg font-semibold text-stone-900">{d.domain || '—'}</div>
+                                <div className="mt-2 grid gap-1 text-sm text-sand-700">
+                                  <div>Acquired: {d.domainAcquiredAt ? isoToDateInput(d.domainAcquiredAt) : '—'}</div>
+                                  <div>Expires: {d.domainExpiresAt ? isoToDateInput(d.domainExpiresAt) : '—'}</div>
+                                  <div>Cost: {d.domainCost ? currency(d.domainCost, d.currency) : currency(0, d.currency)}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border border-sand-200 bg-white p-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Financial</div>
+                                <div className="mt-2 grid gap-1 text-sm text-sand-700">
+                                  <div>Preventivo: {currency(d.value, d.currency)}</div>
+                                  <div>Deposit: {currency(d.deposit || 0, d.currency)}</div>
+                                  <div>Costs: {currency(d.costs || 0, d.currency)}</div>
+                                  <div>Taxes: {currency(d.taxes || 0, d.currency)}</div>
+                                  <div className="mt-1 font-semibold text-stone-900">Net: {currency(d.netTotal || 0, d.currency)}</div>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-sand-700">
+                                  <div>Gil: {currency(d.shareGil || 0, d.currency)}</div>
+                                  <div>Ric: {currency(d.shareRic || 0, d.currency)}</div>
+                                </div>
+                              </div>
+
+                              <div className="rounded-xl border border-sand-200 bg-white p-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Work</div>
+                                <div className="mt-2 grid gap-1 text-sm text-sand-700">
+                                  <div>Type: {d.workType || '—'}</div>
+                                  <div>Work Closed: {d.workClosedAt ? isoToDateInput(d.workClosedAt) : '—'}</div>
+                                  <div>Expected Close: {d.expectedCloseAt ? isoToDateInput(d.expectedCloseAt) : '—'}</div>
+                                  <div>Probability: {d.probability || 0}%</div>
+                                  <div>Source: {d.source || '—'}</div>
+                                </div>
+                              </div>
+
+                              {(d.description || d.notes || d.lostReason) && (
+                                <div className="rounded-xl border border-sand-200 bg-white p-4 lg:col-span-2">
+                                  <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Notes</div>
+                                  {d.description && <div className="mt-2 whitespace-pre-wrap text-sm text-sand-700">{d.description}</div>}
+                                  {d.notes && <div className="mt-3 whitespace-pre-wrap text-sm text-sand-700">{d.notes}</div>}
+                                  {d.lostReason && <div className="mt-3 text-sm text-sand-700">Lost reason: {d.lostReason}</div>}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-2 text-sm text-sand-700">Probability: {d.probability || 0}%</div>
-                        {metaParts.length > 0 && <div className="mt-1 text-sm text-sand-700">{metaParts.join(' · ')}</div>}
                       </div>
                     );
-                  })}
-                </div>
-              </div>
-            </div>
+                  })()
+                : (
+                    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+                      <div className="panel animate-enter p-6">
+                        <h2 className="text-3xl text-sand-900">New Deal</h2>
+                        <div className="mt-4 grid gap-4">
+                          <label>
+                            <span className="field-label">Organization</span>
+                            <select
+                              className="field-input"
+                              value={dealOrgId}
+                              onChange={(e) => {
+                                setDealOrgId(e.target.value);
+                                setDealContactId('');
+                              }}
+                            >
+                              <option value="">Select...</option>
+                              {organizations.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="field-label">Contact</span>
+                            <select className="field-input" value={dealContactId} onChange={(e) => setDealContactId(e.target.value)}>
+                              <option value="">Select...</option>
+                              {contacts
+                                .filter((c) => !dealOrgId || c.organizationId === dealOrgId)
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.firstName} {c.lastName}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="field-label">Stage</span>
+                            <select className="field-input" value={dealStageId} onChange={(e) => setDealStageId(e.target.value)}>
+                              <option value="">None</option>
+                              {pipelineStages.map((st) => (
+                                <option key={st.id} value={st.id}>
+                                  {st.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="field-label">Title</span>
+                            <input className="field-input" value={dealTitle} onChange={(e) => setDealTitle(e.target.value)} placeholder="Retainer renewal" />
+                          </label>
+                          <label>
+                            <span className="field-label">Value</span>
+                            <input
+                              className="field-input"
+                              value={String(dealValue)}
+                              onChange={(e) => setDealValue(Number(e.target.value))}
+                              inputMode="decimal"
+                              placeholder="0"
+                            />
+                          </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <label>
+                              <span className="field-label">Currency</span>
+                              <input className="field-input" value={dealCurrency} onChange={(e) => setDealCurrency(e.target.value)} placeholder="USD" />
+                            </label>
+                            <label>
+                              <span className="field-label">Probability (%)</span>
+                              <input
+                                className="field-input"
+                                value={String(dealProbability)}
+                                onChange={(e) => setDealProbability(Number(e.target.value))}
+                                inputMode="numeric"
+                                placeholder="35"
+                              />
+                            </label>
+                          </div>
+                          <details className="rounded-xl border border-sand-200 bg-white p-3">
+                            <summary className="cursor-pointer text-sm font-semibold text-sand-800">Job details (domain, costs, taxes)</summary>
+                            <div className="mt-3 grid gap-3">
+                              <label>
+                                <span className="field-label">Domain</span>
+                                <input className="field-input" value={dealDomain} onChange={(e) => setDealDomain(e.target.value)} placeholder="example.com" />
+                              </label>
+                              <div className="grid grid-cols-2 gap-3">
+                                <label>
+                                  <span className="field-label">Domain Acquired</span>
+                                  <input
+                                    className="field-input"
+                                    type="date"
+                                    value={dealDomainAcquiredAt}
+                                    onChange={(e) => setDealDomainAcquiredAt(e.target.value)}
+                                  />
+                                </label>
+                                <label>
+                                  <span className="field-label">Domain Expires</span>
+                                  <input
+                                    className="field-input"
+                                    type="date"
+                                    value={dealDomainExpiresAt}
+                                    onChange={(e) => setDealDomainExpiresAt(e.target.value)}
+                                  />
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <label>
+                                  <span className="field-label">Domain Cost</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealDomainCost)}
+                                    onChange={(e) => setDealDomainCost(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                                <label>
+                                  <span className="field-label">Work Type</span>
+                                  <input
+                                    className="field-input"
+                                    value={dealWorkType}
+                                    onChange={(e) => setDealWorkType(e.target.value)}
+                                    placeholder="Website / Support"
+                                  />
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <label>
+                                  <span className="field-label">Deposit (Acconto)</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealDeposit)}
+                                    onChange={(e) => setDealDeposit(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                                <label>
+                                  <span className="field-label">Costs</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealCosts)}
+                                    onChange={(e) => setDealCosts(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <label>
+                                  <span className="field-label">Taxes</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealTaxes)}
+                                    onChange={(e) => setDealTaxes(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                                <label>
+                                  <span className="field-label">Net Total</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealNetTotal)}
+                                    onChange={(e) => setDealNetTotal(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <label>
+                                  <span className="field-label">Gil</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealShareGil)}
+                                    onChange={(e) => setDealShareGil(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                                <label>
+                                  <span className="field-label">Ric</span>
+                                  <input
+                                    className="field-input"
+                                    inputMode="decimal"
+                                    value={String(dealShareRic)}
+                                    onChange={(e) => setDealShareRic(Number(e.target.value))}
+                                    placeholder="0"
+                                  />
+                                </label>
+                              </div>
+                              <label>
+                                <span className="field-label">Work Closed</span>
+                                <input className="field-input" type="date" value={dealWorkClosedAt} onChange={(e) => setDealWorkClosedAt(e.target.value)} />
+                              </label>
+                            </div>
+                          </details>
+                          <button
+                            onClick={() => void onCreateDeal()}
+                            className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
+                            disabled={organizations.length === 0 || contacts.length === 0}
+                          >
+                            Save
+                          </button>
+                          {(organizations.length === 0 || contacts.length === 0) && (
+                            <div className="text-sm text-sand-700">Create an organization and contact first.</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="panel animate-enter p-6" style={{ animationDelay: '60ms' }}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h2 className="text-3xl text-sand-900">Deals</h2>
+                          {deals.length > 0 && (
+                            <label className="flex items-center gap-2 text-sm text-sand-700">
+                              <input
+                                type="checkbox"
+                                checked={deals.length > 0 && deals.every((d) => selectedSet.has(d.id))}
+                                onChange={(e) => selectAll(deals.map((d) => d.id), e.target.checked)}
+                              />
+                              Select all
+                            </label>
+                          )}
+                        </div>
+
+                        {selectedIds.length > 0 && (
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-sand-700">
+                            <div>
+                              Selected: <span className="font-semibold">{selectedIds.length}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => askDelete('deal', selectedIds)}
+                                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100"
+                                disabled={crudBusy}
+                              >
+                                Delete selected
+                              </button>
+                              <button
+                                onClick={() => setSelectedIds([])}
+                                className="rounded-lg border border-sand-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                disabled={crudBusy}
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid gap-3">
+                          {deals.length === 0 && <div className="text-sm text-sand-700">No deals yet.</div>}
+                          {deals.map((d) => {
+                            const org = orgById.get(d.organizationId);
+                            const contact = contactById.get(d.contactId);
+                            const stage = stageById.get(d.pipelineStageId);
+                            const metaParts = [
+                              d.domain ? `Domain: ${d.domain}` : '',
+                              d.domainExpiresAt ? `Expires: ${isoToDateInput(d.domainExpiresAt)}` : '',
+                              d.workType ? `Type: ${d.workType}` : '',
+                              d.netTotal ? `Net: ${currency(d.netTotal, d.currency)}` : ''
+                            ].filter(Boolean);
+                            return (
+                              <div
+                                key={d.id}
+                                className="cursor-pointer rounded-xl border border-sand-200 bg-white p-4 transition hover:bg-sand-50"
+                                onClick={() => openDealFocus(d.id)}
+                                onContextMenu={(e) => onItemContextMenu(e, 'deal', d)}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedSet.has(d.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={() => toggleSelected(d.id)}
+                                    className="mt-1"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-lg font-semibold text-stone-900">{d.title}</div>
+                                    <div className="mt-1 text-sm text-sand-700">
+                                      {org?.name || 'Unknown org'}
+                                      {contact ? ` · ${contact.firstName} ${contact.lastName}` : ''}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-start gap-2">
+                                    <span className="pill">{d.status}</span>
+                                    {stage && <span className="pill">{stage.name}</span>}
+                                    <span className="pill">{currency(d.value, d.currency)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => onItemActionsClick(e, 'deal', d)}
+                                      className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                    >
+                                      ...
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-sm text-sand-700">Probability: {d.probability || 0}%</div>
+                                {metaParts.length > 0 && <div className="mt-1 text-sm text-sand-700">{metaParts.join(' · ')}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+            </>
           )}
 
           {view === 'projects' && (
