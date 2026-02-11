@@ -3401,6 +3401,7 @@ export default function HomePage() {
                                           <div key={tRow.task.id} className="grid grid-cols-[340px_1fr] items-center">
                                             <div
                                               className="border-r border-sand-100 px-4 py-2 pl-11"
+                                              onClick={() => startEdit('task', tRow.task)}
                                               onContextMenu={(e) => onItemContextMenu(e, 'task', tRow.task)}
                                             >
                                               <div className="flex items-start gap-3">
@@ -3410,13 +3411,6 @@ export default function HomePage() {
                                                     {ownerLabel} · {tRow.task.status || 'todo'}
                                                   </div>
                                                 </div>
-                                                <button
-                                                  type="button"
-                                                  onClick={(e) => onItemActionsClick(e, 'task', tRow.task)}
-                                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                                                >
-                                                  ...
-                                                </button>
                                               </div>
                                             </div>
                                             <div className="relative h-10 border-l border-sand-100 bg-white">
@@ -3596,9 +3590,11 @@ export default function HomePage() {
                               {colTasks.map((t) => {
                                 const project = projectById.get(t.projectId);
                                 const deal = project ? dealById.get(project.dealId) : undefined;
+                                const org = deal ? orgById.get(deal.organizationId) : undefined;
                                 const owner = userById.get(t.ownerUserId);
                                 const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
                                 const projectLabel = deal?.title || project?.name || 'Unknown project';
+                                const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                                 return (
                                   <div
                                     key={t.id}
@@ -3606,23 +3602,14 @@ export default function HomePage() {
                                     draggable
                                     onDragStart={(e) => onTaskKanbanDragStart(e, t.id)}
                                     onDragEnd={() => setTaskKanbanDragOverStatus(null)}
+                                    onClick={() => startEdit('task', t)}
                                     onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
                                   >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0 flex-1">
-                                        <div className="truncate text-sm font-semibold text-stone-900">{t.title}</div>
-                                        <div className="mt-1 truncate text-xs text-sand-700">
-                                          {projectLabel} · {ownerLabel}
-                                        </div>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-semibold text-stone-900">{t.title}</div>
+                                      <div className="mt-1 truncate text-xs text-sand-700">
+                                        {taskScopeLabel} · {ownerLabel}
                                       </div>
-                                      <button
-                                        type="button"
-                                        onClick={(e) => onItemActionsClick(e, 'task', t)}
-                                        className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                                        disabled={crudBusy}
-                                      >
-                                        ...
-                                      </button>
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-sand-700">
                                       <span className="pill">P{t.priority || 0}</span>
@@ -3649,12 +3636,16 @@ export default function HomePage() {
                       filteredTasks.map((t) => {
                         const project = projectById.get(t.projectId);
                         const deal = project ? dealById.get(project.dealId) : undefined;
+                        const org = deal ? orgById.get(deal.organizationId) : undefined;
                         const owner = userById.get(t.ownerUserId);
                         const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
+                        const projectLabel = deal?.title || project?.name || 'Unknown project';
+                        const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                         return (
                           <div
                             key={t.id}
                             className="rounded-xl border border-sand-200 bg-white p-4"
+                            onClick={() => startEdit('task', t)}
                             onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
                           >
                             <div className="flex items-start gap-3">
@@ -3662,23 +3653,17 @@ export default function HomePage() {
                                 type="checkbox"
                                 checked={selectedSet.has(t.id)}
                                 onChange={() => toggleSelected(t.id)}
+                                onClick={(e) => e.stopPropagation()}
                                 className="mt-1"
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="text-lg font-semibold text-stone-900">{t.title}</div>
-                                <div className="mt-1 text-sm text-sand-700">{deal?.title || project?.name || 'Unknown project'}</div>
+                                <div className="mt-1 text-sm text-sand-700">{taskScopeLabel}</div>
                                 <div className="mt-2 text-xs text-sand-700">Owner: {ownerLabel}</div>
                               </div>
                               <div className="flex flex-wrap items-start gap-2">
                                 <span className="pill">{t.status}</span>
                                 <span className="pill">P{t.priority || 0}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => onItemActionsClick(e, 'task', t)}
-                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                                >
-                                  ...
-                                </button>
                               </div>
                             </div>
                           </div>
@@ -3731,9 +3716,11 @@ export default function HomePage() {
                                   const task = row.task;
                                   const project = projectById.get(task.projectId);
                                   const deal = project ? dealById.get(project.dealId) : undefined;
+                                  const org = deal ? orgById.get(deal.organizationId) : undefined;
                                   const owner = userById.get(task.ownerUserId);
                                   const ownerLabel = owner ? owner.name : task.ownerUserId ? 'Unknown' : 'Unassigned';
                                   const projectLabel = deal?.title || project?.name || 'Unknown project';
+                                  const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                                   const barColor =
                                     task.status === 'done'
                                       ? 'bg-emerald-500'
@@ -3748,27 +3735,25 @@ export default function HomePage() {
                                       key={task.id}
                                       className="grid grid-cols-[340px_1fr] items-center border-b border-sand-100 last:border-b-0"
                                     >
-                                      <div className="border-r border-sand-100 px-4 py-3" onContextMenu={(e) => onItemContextMenu(e, 'task', task)}>
+                                      <div
+                                        className="border-r border-sand-100 px-4 py-3"
+                                        onClick={() => startEdit('task', task)}
+                                        onContextMenu={(e) => onItemContextMenu(e, 'task', task)}
+                                      >
                                         <div className="flex items-start gap-3">
                                           <input
                                             type="checkbox"
                                             checked={selectedSet.has(task.id)}
                                             onChange={() => toggleSelected(task.id)}
+                                            onClick={(e) => e.stopPropagation()}
                                             className="mt-1"
                                           />
                                           <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-semibold text-stone-900">{task.title}</div>
                                             <div className="mt-1 truncate text-xs text-sand-700">
-                                              {projectLabel} · {ownerLabel} · {task.status || 'todo'}
+                                              {taskScopeLabel} · {ownerLabel} · {task.status || 'todo'}
                                             </div>
                                           </div>
-                                          <button
-                                            type="button"
-                                            onClick={(e) => onItemActionsClick(e, 'task', task)}
-                                            className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                                          >
-                                            ...
-                                          </button>
                                         </div>
                                       </div>
                                       <div className="relative h-10 border-l border-sand-100 bg-white">
