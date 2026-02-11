@@ -153,7 +153,7 @@ export default function HomePage() {
   const [me, setMe] = useState<User | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [loginEmail, setLoginEmail] = useState('admin@wemadeit.local');
+  const [loginEmail, setLoginEmail] = useState('admin');
   const [loginPassword, setLoginPassword] = useState('admin');
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -459,16 +459,16 @@ export default function HomePage() {
   }
 
   async function onLogin() {
-    const email = loginEmail.trim();
+    const userLogin = loginEmail.trim();
     const password = loginPassword;
-    if (!email || !password) {
-      setAuthError('Email and password are required.');
+    if (!userLogin || !password) {
+      setAuthError('Username and password are required.');
       return;
     }
     setAuthBusy(true);
     setAuthError(null);
     try {
-      const result = await login(email, password);
+      const result = await login(userLogin, password);
       window.localStorage.setItem('wemadeit_token', result.token);
       setMe(result.user);
       await refresh();
@@ -590,6 +590,10 @@ export default function HomePage() {
     if (!pid) return tasks;
     return tasks.filter((t) => (t.projectId || '').trim() === pid);
   }, [tasks, tasksProjectFilterId]);
+  const otherAdminCount = useMemo(
+    () => users.filter((u) => u.role === 'admin' && u.id !== me?.id).length,
+    [users, me?.id]
+  );
   const dealsByStageId = useMemo(() => {
     const map = new Map<string, number>();
     deals.forEach((d) => {
@@ -1414,12 +1418,12 @@ export default function HomePage() {
 
             <div className="mt-6 grid gap-4">
               <label>
-                <span className="field-label">Email</span>
+                <span className="field-label">Username</span>
                 <input
                   className="field-input"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="admin@wemadeit.local"
+                  placeholder="admin"
                   autoComplete="username"
                 />
               </label>
@@ -1449,7 +1453,7 @@ export default function HomePage() {
               </button>
 
               <div className="rounded-xl border border-sand-200 bg-white/70 p-3 text-xs text-sand-700">
-                Default dev login: <span className="font-semibold">admin@wemadeit.local</span> / <span className="font-semibold">admin</span>
+                Default dev login: <span className="font-semibold">admin</span> / <span className="font-semibold">admin</span>
               </div>
             </div>
           </div>
@@ -1477,7 +1481,7 @@ export default function HomePage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-stone-900">{me.name}</div>
-                <div className="mt-1 text-xs text-sand-700">{me.emailAddress}</div>
+                <div className="mt-1 text-xs text-sand-700">@{me.username || me.emailAddress}</div>
               </div>
               <span className="pill">{me.role}</span>
             </div>
@@ -3877,6 +3881,7 @@ export default function HomePage() {
                         <option value="forest">Forest</option>
                         <option value="graphite">Graphite</option>
                         <option value="rose">Rose</option>
+                        <option value="wemadeit-gay">We Made It Gay</option>
                       </select>
                     </label>
                     <label>
@@ -3979,7 +3984,7 @@ export default function HomePage() {
                         type="button"
                         onClick={() =>
                           startNew('user', {
-                            emailAddress: '',
+                            username: '',
                             name: '',
                             role: 'developer',
                             password: ''
@@ -4004,7 +4009,7 @@ export default function HomePage() {
                                   {u.name}
                                   {u.id === me?.id ? <span className="text-sand-700"> (you)</span> : null}
                                 </div>
-                                <div className="mt-1 text-sm text-sand-700">{u.emailAddress}</div>
+                                <div className="mt-1 text-sm text-sand-700">@{u.username || u.emailAddress}</div>
                               </div>
                               <div className="flex flex-wrap items-start gap-2">
                                 <span className="pill">{u.role}</span>
@@ -4020,8 +4025,12 @@ export default function HomePage() {
                                   type="button"
                                   onClick={() => askDelete('user', [u.id])}
                                   className="rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  disabled={crudBusy || u.id === me?.id}
-                                  title={u.id === me?.id ? 'You cannot delete your own user.' : 'Delete user'}
+                                  disabled={crudBusy || (u.id === me?.id && otherAdminCount < 1)}
+                                  title={
+                                    u.id === me?.id && otherAdminCount < 1
+                                      ? 'Create another admin first.'
+                                      : 'Delete user'
+                                  }
                                 >
                                   Delete
                                 </button>
@@ -4572,12 +4581,12 @@ export default function HomePage() {
             {edit.kind === 'user' && (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <label className="md:col-span-2">
-                  <span className="field-label">Email</span>
+                  <span className="field-label">Username</span>
                   <input
                     className="field-input"
-                    value={edit.draft.emailAddress || ''}
-                    onChange={(e) => updateEditDraft({ emailAddress: e.target.value })}
-                    placeholder="name@company.com"
+                    value={edit.draft.username || ''}
+                    onChange={(e) => updateEditDraft({ username: e.target.value })}
+                    placeholder="john"
                     autoComplete="off"
                   />
                 </label>
@@ -4703,7 +4712,7 @@ export default function HomePage() {
                     <option value="">Unassigned</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.name} · {u.emailAddress}
+                        {u.name} · @{u.username || u.emailAddress}
                       </option>
                     ))}
                   </select>

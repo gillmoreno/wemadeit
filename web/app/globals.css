@@ -91,6 +91,23 @@
     --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
   }
 
+  :root[data-theme='wemadeit-gay'] {
+    --sand-50: 243 250 248;
+    --sand-100: 223 242 238;
+    --sand-200: 195 230 224;
+    --sand-300: 160 210 203;
+    --sand-400: 123 189 180;
+    --sand-500: 93 172 162;
+    --sand-600: 74 144 134;
+    --sand-700: 58 118 110;
+    --sand-800: 47 95 89;
+    --sand-900: 35 72 67;
+    --stoneink: 27 43 40;
+
+    --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue";
+    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
+  }
+
   html,
   body {
     @apply min-h-full bg-sand-50 text-stoneink;

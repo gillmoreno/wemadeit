@@ -47,6 +47,7 @@ func (s *Store) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
+			username TEXT NOT NULL UNIQUE,
 			email_address TEXT NOT NULL UNIQUE,
 			name TEXT NOT NULL,
 			role TEXT NOT NULL,
@@ -251,6 +252,9 @@ func (s *Store) migrate() error {
 	_, _ = s.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_payments_deal_id ON payments(deal_id);`)
 
 	// Forward-only compatibility for older DBs.
+	_, _ = s.DB.Exec(`ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT '';`)
+	_, _ = s.DB.Exec(`UPDATE users SET username = LOWER(TRIM(email_address)) WHERE TRIM(username) = '';`)
+	_, _ = s.DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);`)
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN pipeline_stage_id TEXT NOT NULL DEFAULT '';`)
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain TEXT NOT NULL DEFAULT '';`)
 	_, _ = s.DB.Exec(`ALTER TABLE deals ADD COLUMN domain_acquired_at INTEGER NOT NULL DEFAULT 0;`)
@@ -293,6 +297,14 @@ func (s *Store) SeedIfNeeded() error {
 		if adminName == "" {
 			adminName = "Admin"
 		}
+		adminUsername := strings.TrimSpace(os.Getenv("WEMADEIT_ADMIN_USERNAME"))
+		if adminUsername == "" {
+			adminUsername = strings.TrimSpace(strings.Split(adminEmail, "@")[0])
+		}
+		adminUsername = strings.ToLower(adminUsername)
+		if adminUsername == "" {
+			adminUsername = "admin"
+		}
 
 		hash, err := auth.HashPassword(adminPassword)
 		if err != nil {
@@ -300,6 +312,7 @@ func (s *Store) SeedIfNeeded() error {
 		}
 		seededUser = models.User{
 			ID:           newID(),
+			Username:     adminUsername,
 			EmailAddress: adminEmail,
 			Name:         adminName,
 			Role:         models.RoleAdmin,

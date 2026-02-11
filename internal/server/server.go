@@ -148,6 +148,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
+		Login    string `json:"login"`
+		Username string `json:"username"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
@@ -156,16 +158,29 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := strings.ToLower(strings.TrimSpace(payload.Email))
-	if email == "" || strings.TrimSpace(payload.Password) == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse("email and password are required"))
+	login := strings.ToLower(strings.TrimSpace(payload.Login))
+	if login == "" {
+		login = strings.ToLower(strings.TrimSpace(payload.Username))
+	}
+	if login == "" {
+		login = strings.ToLower(strings.TrimSpace(payload.Email))
+	}
+	if login == "" || strings.TrimSpace(payload.Password) == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse("username and password are required"))
 		return
 	}
 
-	user, ok, err := s.store.FindUserByEmail(email)
+	user, ok, err := s.store.FindUserByUsername(login)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 		return
+	}
+	if !ok {
+		user, ok, err = s.store.FindUserByEmail(login)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
 	}
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, errorResponse("invalid credentials"))
@@ -903,6 +918,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var payload struct {
 			ID           string `json:"id"`
+			Username     string `json:"username"`
 			EmailAddress string `json:"emailAddress"`
 			Name         string `json:"name"`
 			Role         string `json:"role"`
@@ -913,15 +929,22 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		username := strings.ToLower(strings.TrimSpace(payload.Username))
+		if username == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse("username is required"))
+			return
+		}
 		email := strings.ToLower(strings.TrimSpace(payload.EmailAddress))
 		if email == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("emailAddress is required"))
-			return
+			if strings.Contains(username, "@") {
+				email = username
+			} else {
+				email = fmt.Sprintf("%s@local", username)
+			}
 		}
 		name := strings.TrimSpace(payload.Name)
 		if name == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("name is required"))
-			return
+			name = username
 		}
 		role := models.UserRole(strings.TrimSpace(payload.Role))
 		if role == "" {
@@ -951,6 +974,13 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 			}
 			user = u
 		} else {
+			if _, ok, err := s.store.FindUserByUsername(username); err != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+				return
+			} else if ok {
+				writeJSON(w, http.StatusConflict, errorResponse("username already exists"))
+				return
+			}
 			if _, ok, err := s.store.FindUserByEmail(email); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 				return
@@ -962,6 +992,20 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 				ID:        newID(),
 				CreatedAt: now,
 			}
+		}
+		if existing, ok, err := s.store.FindUserByUsername(username); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		} else if ok && existing.ID != user.ID {
+			writeJSON(w, http.StatusConflict, errorResponse("username already exists"))
+			return
+		}
+		if existing, ok, err := s.store.FindUserByEmail(email); err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		} else if ok && existing.ID != user.ID {
+			writeJSON(w, http.StatusConflict, errorResponse("emailAddress already exists"))
+			return
 		}
 
 		password := strings.TrimSpace(payload.Password)
@@ -977,6 +1021,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		user.Username = username
 		user.EmailAddress = email
 		user.Name = name
 		user.Role = role
@@ -994,14 +1039,36 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
 			return
 		}
+		users, err := s.store.LoadUsers()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
+			return
+		}
+		deleteSet := make(map[string]struct{}, len(ids))
+		for _, id := range ids {
+			clean := strings.TrimSpace(id)
+			if clean != "" {
+				deleteSet[clean] = struct{}{}
+			}
+		}
+		adminsRemaining := 0
+		for _, u := range users {
+			if u.Role != models.RoleAdmin {
+				continue
+			}
+			if _, deleting := deleteSet[u.ID]; deleting {
+				continue
+			}
+			adminsRemaining++
+		}
+		if adminsRemaining == 0 {
+			writeJSON(w, http.StatusBadRequest, errorResponse("at least one admin user must remain"))
+			return
+		}
 		for _, id := range ids {
 			clean := strings.TrimSpace(id)
 			if clean == "" {
 				continue
-			}
-			if clean == ac.User.ID {
-				writeJSON(w, http.StatusBadRequest, errorResponse("cannot delete your own user"))
-				return
 			}
 			if err := s.store.DeleteUser(clean); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))

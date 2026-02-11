@@ -9,11 +9,16 @@ import (
 )
 
 func (s *Store) SaveUser(u models.User) error {
+	username := strings.ToLower(strings.TrimSpace(u.Username))
+	if username == "" {
+		username = strings.ToLower(strings.TrimSpace(u.EmailAddress))
+	}
 	_, err := s.DB.Exec(
 		`INSERT OR REPLACE INTO users
-		(id, email_address, name, role, password_hash, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?);`,
+		(id, username, email_address, name, role, password_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
 		u.ID,
+		username,
 		strings.ToLower(strings.TrimSpace(u.EmailAddress)),
 		u.Name,
 		string(u.Role),
@@ -25,7 +30,7 @@ func (s *Store) SaveUser(u models.User) error {
 }
 
 func (s *Store) LoadUsers() ([]models.User, error) {
-	rows, err := s.DB.Query(`SELECT id, email_address, name, role, password_hash, created_at, updated_at FROM users ORDER BY created_at DESC;`)
+	rows, err := s.DB.Query(`SELECT id, username, email_address, name, role, password_hash, created_at, updated_at FROM users ORDER BY created_at DESC;`)
 	if err != nil {
 		return nil, err
 	}
@@ -36,8 +41,11 @@ func (s *Store) LoadUsers() ([]models.User, error) {
 		var u models.User
 		var role string
 		var createdUnix, updatedUnix int64
-		if err := rows.Scan(&u.ID, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
 			return nil, err
+		}
+		if strings.TrimSpace(u.Username) == "" {
+			u.Username = strings.ToLower(strings.TrimSpace(u.EmailAddress))
 		}
 		u.Role = models.UserRole(role)
 		u.CreatedAt = time.Unix(createdUnix, 0)
@@ -49,15 +57,39 @@ func (s *Store) LoadUsers() ([]models.User, error) {
 
 func (s *Store) FindUserByEmail(email string) (models.User, bool, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
-	row := s.DB.QueryRow(`SELECT id, email_address, name, role, password_hash, created_at, updated_at FROM users WHERE email_address = ? LIMIT 1;`, email)
+	row := s.DB.QueryRow(`SELECT id, username, email_address, name, role, password_hash, created_at, updated_at FROM users WHERE email_address = ? LIMIT 1;`, email)
 	var u models.User
 	var role string
 	var createdUnix, updatedUnix int64
-	if err := row.Scan(&u.ID, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
 		if err == sql.ErrNoRows {
 			return models.User{}, false, nil
 		}
 		return models.User{}, false, err
+	}
+	if strings.TrimSpace(u.Username) == "" {
+		u.Username = strings.ToLower(strings.TrimSpace(u.EmailAddress))
+	}
+	u.Role = models.UserRole(role)
+	u.CreatedAt = time.Unix(createdUnix, 0)
+	u.UpdatedAt = time.Unix(updatedUnix, 0)
+	return u, true, nil
+}
+
+func (s *Store) FindUserByUsername(username string) (models.User, bool, error) {
+	username = strings.ToLower(strings.TrimSpace(username))
+	row := s.DB.QueryRow(`SELECT id, username, email_address, name, role, password_hash, created_at, updated_at FROM users WHERE username = ? LIMIT 1;`, username)
+	var u models.User
+	var role string
+	var createdUnix, updatedUnix int64
+	if err := row.Scan(&u.ID, &u.Username, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
+		if err == sql.ErrNoRows {
+			return models.User{}, false, nil
+		}
+		return models.User{}, false, err
+	}
+	if strings.TrimSpace(u.Username) == "" {
+		u.Username = strings.ToLower(strings.TrimSpace(u.EmailAddress))
 	}
 	u.Role = models.UserRole(role)
 	u.CreatedAt = time.Unix(createdUnix, 0)
@@ -66,15 +98,18 @@ func (s *Store) FindUserByEmail(email string) (models.User, bool, error) {
 }
 
 func (s *Store) FindUserByID(id string) (models.User, bool, error) {
-	row := s.DB.QueryRow(`SELECT id, email_address, name, role, password_hash, created_at, updated_at FROM users WHERE id = ? LIMIT 1;`, id)
+	row := s.DB.QueryRow(`SELECT id, username, email_address, name, role, password_hash, created_at, updated_at FROM users WHERE id = ? LIMIT 1;`, id)
 	var u models.User
 	var role string
 	var createdUnix, updatedUnix int64
-	if err := row.Scan(&u.ID, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.EmailAddress, &u.Name, &role, &u.PasswordHash, &createdUnix, &updatedUnix); err != nil {
 		if err == sql.ErrNoRows {
 			return models.User{}, false, nil
 		}
 		return models.User{}, false, err
+	}
+	if strings.TrimSpace(u.Username) == "" {
+		u.Username = strings.ToLower(strings.TrimSpace(u.EmailAddress))
 	}
 	u.Role = models.UserRole(role)
 	u.CreatedAt = time.Unix(createdUnix, 0)

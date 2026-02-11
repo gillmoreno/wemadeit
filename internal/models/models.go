@@ -136,6 +136,7 @@ const (
 
 type User struct {
 	ID           string    `json:"id"`
+	Username     string    `json:"username"`
 	EmailAddress string    `json:"emailAddress"`
 	Name         string    `json:"name"`
 	Role         UserRole  `json:"role"`

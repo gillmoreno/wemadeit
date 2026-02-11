@@ -175,6 +175,7 @@ export type Interaction = {
 
 export type User = {
   id: string;
+  username: string;
   emailAddress: string;
   name: string;
   role: string;
@@ -257,10 +258,10 @@ async function request<T>(path: string, options?: RequestOptions): Promise<T> {
   return res.json();
 }
 
-export async function login(email: string, password: string) {
+export async function login(login: string, password: string) {
   return request<{ token: string; user: User }>('/api/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ login, password }),
     skipAuth: true
   });
 }
