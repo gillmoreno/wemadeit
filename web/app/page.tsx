@@ -41,9 +41,10 @@ import {
   updateSettings
 } from '../lib/api';
 
-type DealsMode = 'kanban' | 'list' | 'gantt';
+type DealsMode = 'kanban' | 'list';
 type DealsStatusFilter = 'open' | 'won' | 'lost' | 'all';
-type TasksMode = 'kanban' | 'list';
+type ProjectsMode = 'list' | 'gantt';
+type TasksMode = 'kanban' | 'list' | 'gantt';
 
 const views = ['dashboard', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings'] as const;
 type View = (typeof views)[number];
@@ -139,6 +140,106 @@ function datetimeLocalToISO(v: string): string | undefined {
   return d.toISOString();
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type TimelineInterval = { start: number; end: number };
+
+type TimelineLayout = {
+  min: number;
+  max: number;
+  range: number;
+  chartWidth: number;
+  stepDays: number;
+  ticks: number[];
+};
+
+function toTimeOrNull(iso?: string): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return null;
+  return t;
+}
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function estimateTaskDurationMs(task: Task): number {
+  const hours = Number(task.estimatedHours) || 0;
+  if (hours <= 0) return DAY_MS;
+  return Math.max(DAY_MS, Math.round((hours / 8) * DAY_MS));
+}
+
+function buildTaskInterval(task: Task, fallbackStart: number): TimelineInterval {
+  const start = toTimeOrNull(task.createdAt) ?? fallbackStart;
+  const due = toTimeOrNull(task.dueDate);
+  const endCandidate = due ?? start + estimateTaskDurationMs(task);
+  const end = Math.max(endCandidate, start + DAY_MS);
+  return { start, end };
+}
+
+function buildTimelineLayout(intervals: TimelineInterval[], pxPerDay = 28): TimelineLayout | null {
+  if (intervals.length === 0) return null;
+  let min = intervals[0].start;
+  let max = intervals[0].end;
+  for (const it of intervals) {
+    min = Math.min(min, it.start);
+    max = Math.max(max, it.end);
+  }
+
+  const paddedMin = startOfDay(min - DAY_MS);
+  const paddedMax = startOfDay(max + DAY_MS);
+  const range = Math.max(DAY_MS, paddedMax - paddedMin);
+  const days = Math.max(1, Math.ceil(range / DAY_MS));
+  const chartWidth = Math.max(960, days * pxPerDay);
+
+  let stepDays = 1;
+  if (days > 40) stepDays = 7;
+  if (days > 180) stepDays = 30;
+  if (days > 540) stepDays = 60;
+
+  const ticks: number[] = [];
+  for (let t = paddedMin; t <= paddedMax; t += stepDays * DAY_MS) {
+    ticks.push(t);
+  }
+  if (ticks[ticks.length - 1] !== paddedMax) {
+    ticks.push(paddedMax);
+  }
+
+  return {
+    min: paddedMin,
+    max: paddedMax,
+    range,
+    chartWidth,
+    stepDays,
+    ticks
+  };
+}
+
+function timelineLeftPx(ts: number, layout: TimelineLayout): number {
+  return ((ts - layout.min) / layout.range) * layout.chartWidth;
+}
+
+function timelineBarStyle(interval: TimelineInterval, layout: TimelineLayout) {
+  const left = timelineLeftPx(interval.start, layout);
+  const right = timelineLeftPx(interval.end, layout);
+  return {
+    left,
+    width: Math.max(10, right - left)
+  };
+}
+
+function formatTimelineTick(ts: number, stepDays: number): string {
+  const d = new Date(ts);
+  if (stepDays >= 30) {
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export default function HomePage() {
   const [view, setView] = useState<View>('dashboard');
   const [me, setMe] = useState<User | null>(null);
@@ -199,6 +300,7 @@ export default function HomePage() {
   const [dealsStatus, setDealsStatus] = useState<DealsStatusFilter>('open');
   const [kanbanDragOverStageId, setKanbanDragOverStageId] = useState<string | null>(null);
 
+  const [projectsMode, setProjectsMode] = useState<ProjectsMode>('list');
   const [tasksMode, setTasksMode] = useState<TasksMode>('kanban');
   const [tasksProjectFilterId, setTasksProjectFilterId] = useState<string>('');
   const [taskKanbanDragOverStatus, setTaskKanbanDragOverStatus] = useState<string | null>(null);
@@ -554,6 +656,72 @@ export default function HomePage() {
     if (!pid) return tasks;
     return tasks.filter((t) => (t.projectId || '').trim() === pid);
   }, [tasks, tasksProjectFilterId]);
+  const tasksByProjectId = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    tasks.forEach((t) => {
+      const pid = (t.projectId || '').trim();
+      if (!pid) return;
+      const arr = map.get(pid) || [];
+      arr.push(t);
+      map.set(pid, arr);
+    });
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aDue = toTimeOrNull(a.dueDate) ?? Number.MAX_SAFE_INTEGER;
+        const bDue = toTimeOrNull(b.dueDate) ?? Number.MAX_SAFE_INTEGER;
+        if (aDue !== bDue) return aDue - bDue;
+        return (toTimeOrNull(a.createdAt) ?? 0) - (toTimeOrNull(b.createdAt) ?? 0);
+      });
+    }
+    return map;
+  }, [tasks]);
+  const projectTimelineRows = useMemo(() => {
+    return projects
+      .map((project) => {
+        const projectStart = toTimeOrNull(project.startDate) ?? toTimeOrNull(project.createdAt) ?? Date.now();
+        const taskRows = (tasksByProjectId.get(project.id) || []).map((task) => ({
+          task,
+          ...buildTaskInterval(task, projectStart)
+        }));
+
+        const projectEndFromDates = toTimeOrNull(project.actualEndDate) ?? toTimeOrNull(project.targetEndDate);
+        const projectEndFromTasks = taskRows.length > 0 ? Math.max(...taskRows.map((t) => t.end)) : null;
+        const projectEnd = Math.max(projectEndFromDates ?? projectEndFromTasks ?? projectStart + 14 * DAY_MS, projectStart + DAY_MS);
+
+        return {
+          project,
+          start: projectStart,
+          end: projectEnd,
+          tasks: taskRows
+        };
+      })
+      .sort((a, b) => a.start - b.start);
+  }, [projects, tasksByProjectId]);
+  const projectTimelineLayout = useMemo(() => {
+    const intervals: TimelineInterval[] = [];
+    projectTimelineRows.forEach((row) => {
+      intervals.push({ start: row.start, end: row.end });
+      row.tasks.forEach((t) => intervals.push({ start: t.start, end: t.end }));
+    });
+    return buildTimelineLayout(intervals, 30);
+  }, [projectTimelineRows]);
+  const taskTimelineRows = useMemo(() => {
+    return filteredTasks
+      .map((task) => {
+        const baseStart = toTimeOrNull(task.createdAt) ?? Date.now();
+        return {
+          task,
+          ...buildTaskInterval(task, baseStart)
+        };
+      })
+      .sort((a, b) => a.start - b.start);
+  }, [filteredTasks]);
+  const taskTimelineLayout = useMemo(() => {
+    return buildTimelineLayout(
+      taskTimelineRows.map((row) => ({ start: row.start, end: row.end })),
+      34
+    );
+  }, [taskTimelineRows]);
   const otherAdminCount = useMemo(
     () => users.filter((u) => u.role === 'admin' && u.id !== me?.id).length,
     [users, me?.id]
@@ -2715,18 +2883,6 @@ export default function HomePage() {
                                     >
                                       List
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDealsMode('gantt')}
-                                      className={[
-                                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
-                                        dealsMode === 'gantt'
-                                          ? 'bg-sand-100 text-sand-900'
-                                          : 'bg-white text-sand-700 hover:bg-sand-50'
-                                      ].join(' ')}
-                                    >
-                                      Gantt
-                                    </button>
                                   </div>
                                 </div>
 
@@ -2995,93 +3151,6 @@ export default function HomePage() {
                                     );
                                   })()}
 
-                                {dealsMode === 'gantt' &&
-                                  (() => {
-                                    if (filteredDeals.length === 0) {
-                                      return <div className="text-sm text-sand-700">No deals to show.</div>;
-                                    }
-
-                                    const toTime = (iso?: string): number | null => {
-                                      if (!iso) return null;
-                                      const d = new Date(iso);
-                                      const t = d.getTime();
-                                      return Number.isFinite(t) ? t : null;
-                                    };
-
-                                    const rows = filteredDeals
-                                      .map((d) => {
-                                        const start = toTime(d.createdAt) ?? Date.now();
-                                        const end = toTime(d.expectedCloseAt) ?? toTime(d.workClosedAt) ?? start;
-                                        return {
-                                          deal: d,
-                                          start,
-                                          end: Math.max(end, start)
-                                        };
-                                      })
-                                      .sort((a, b) => a.end - b.end);
-
-                                    const min = Math.min(...rows.map((r) => r.start));
-                                    const max = Math.max(...rows.map((r) => r.end));
-                                    const range = Math.max(1, max - min);
-                                    const chartWidth = 1200;
-
-                                    return (
-                                      <div className="h-full overflow-y-auto pr-1">
-                                        <div className="rounded-xl border border-sand-200 bg-white p-4 text-sm text-sand-700">
-                                          Range: {new Date(min).toLocaleDateString()} to {new Date(max).toLocaleDateString()} · Bars use{' '}
-                                          <span className="font-semibold">Created</span> to <span className="font-semibold">Expected close</span>{' '}
-                                          (or Work closed).
-                                        </div>
-
-                                        <div className="mt-4 overflow-x-auto">
-                                          <div style={{ minWidth: chartWidth + 320 }}>
-                                            {rows.map((r) => {
-                                              const d = r.deal;
-                                              const left = ((r.start - min) / range) * chartWidth;
-                                              const width = Math.max(10, ((r.end - r.start) / range) * chartWidth);
-                                              const org = orgById.get(d.organizationId);
-                                              const stage = stageById.get(d.pipelineStageId);
-                                              const barColor =
-                                                d.status === 'won'
-                                                  ? 'bg-emerald-600'
-                                                  : d.status === 'lost'
-                                                    ? 'bg-red-600'
-                                                    : 'bg-sand-700';
-                                              return (
-                                                <div
-                                                  key={d.id}
-                                                  className="grid grid-cols-[300px_1fr] items-center gap-4 border-b border-sand-200 py-3"
-                                                >
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => openDealFocus(d.id)}
-                                                    className="text-left"
-                                                  >
-                                                    <div className="truncate text-sm font-semibold text-stone-900">{d.title}</div>
-                                                    <div className="mt-1 truncate text-xs text-sand-700">
-                                                      {org?.name || 'Unknown org'}
-                                                      {stage ? ` · ${stage.name}` : ''}
-                                                    </div>
-                                                  </button>
-
-                                                  <div className="relative h-10 rounded-2xl border border-sand-200 bg-sand-50">
-                                                    <div
-                                                      className={[
-                                                        'absolute top-1/2 h-3 -translate-y-1/2 rounded-full',
-                                                        barColor
-                                                      ].join(' ')}
-                                                      style={{ left, width }}
-                                                      title={`${new Date(r.start).toLocaleDateString()} → ${new Date(r.end).toLocaleDateString()}`}
-                                                    />
-                                                  </div>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
                               </div>
                             </>
                           );
@@ -3094,7 +3163,31 @@ export default function HomePage() {
           {view === 'projects' && (
             <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-3xl text-sand-900">Projects</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-3xl text-sand-900">Projects</h2>
+                  <div className="inline-flex overflow-hidden rounded-xl border border-sand-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setProjectsMode('list')}
+                      className={[
+                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
+                        projectsMode === 'list' ? 'bg-sand-100 text-sand-900' : 'bg-white text-sand-700 hover:bg-sand-50'
+                      ].join(' ')}
+                    >
+                      List
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProjectsMode('gantt')}
+                      className={[
+                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
+                        projectsMode === 'gantt' ? 'bg-sand-100 text-sand-900' : 'bg-white text-sand-700 hover:bg-sand-50'
+                      ].join(' ')}
+                    >
+                      Gantt
+                    </button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -3110,7 +3203,7 @@ export default function HomePage() {
                   >
                     New project
                   </button>
-                  {projects.length > 0 && (
+                  {projectsMode === 'list' && projects.length > 0 && (
                     <label className="flex items-center gap-2 text-sm text-sand-700">
                       <input
                         type="checkbox"
@@ -3147,42 +3240,214 @@ export default function HomePage() {
                 </div>
               )}
 
-              <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
-                <div className="grid gap-3">
-                  {projects.length === 0 && <div className="text-sm text-sand-700">No projects yet.</div>}
-                  {projects.map((p) => {
-                    const deal = dealById.get(p.dealId);
-                    const org = deal ? orgById.get(deal.organizationId) : undefined;
-                    const taskCount = tasks.filter((t) => t.projectId === p.id).length;
-                    return (
-                      <div
-                        key={p.id}
-                        className="rounded-xl border border-sand-200 bg-white p-4"
-                        onContextMenu={(e) => onItemContextMenu(e, 'project', p)}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input type="checkbox" checked={selectedSet.has(p.id)} onChange={() => toggleSelected(p.id)} className="mt-1" />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-lg font-semibold text-stone-900">{deal?.title || p.name || 'Project'}</div>
-                            <div className="mt-1 text-sm text-sand-700">{org?.name || 'Unknown org'}</div>
-                          </div>
-                          <div className="flex flex-wrap items-start gap-2">
-                            <span className="pill">{p.status}</span>
-                            <span className="pill">{taskCount} tasks</span>
-                            <button
-                              type="button"
-                              onClick={(e) => onItemActionsClick(e, 'project', p)}
-                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                            >
-                              ...
-                            </button>
+              {projectsMode === 'list' ? (
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
+                  <div className="grid gap-3">
+                    {projects.length === 0 && <div className="text-sm text-sand-700">No projects yet.</div>}
+                    {projects.map((p) => {
+                      const deal = dealById.get(p.dealId);
+                      const org = deal ? orgById.get(deal.organizationId) : undefined;
+                      const taskCount = (tasksByProjectId.get(p.id) || []).length;
+                      return (
+                        <div
+                          key={p.id}
+                          className="rounded-xl border border-sand-200 bg-white p-4"
+                          onContextMenu={(e) => onItemContextMenu(e, 'project', p)}
+                        >
+                          <div className="flex items-start gap-3">
+                            <input type="checkbox" checked={selectedSet.has(p.id)} onChange={() => toggleSelected(p.id)} className="mt-1" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-lg font-semibold text-stone-900">{deal?.title || p.name || 'Project'}</div>
+                              <div className="mt-1 text-sm text-sand-700">{org?.name || 'Unknown org'}</div>
+                            </div>
+                            <div className="flex flex-wrap items-start gap-2">
+                              <span className="pill">{p.status}</span>
+                              <span className="pill">{taskCount} tasks</span>
+                              <button
+                                type="button"
+                                onClick={(e) => onItemActionsClick(e, 'project', p)}
+                                className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                              >
+                                ...
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                  {projects.length === 0 && <div className="text-sm text-sand-700">No projects yet.</div>}
+                  {projects.length > 0 && projectTimelineLayout && (
+                    (() => {
+                      const layout = projectTimelineLayout;
+                      return (
+                        <div className="space-y-3">
+                          <div className="rounded-xl border border-sand-200 bg-white p-4 text-sm text-sand-700">
+                            Range: {new Date(layout.min).toLocaleDateString()} to {new Date(layout.max).toLocaleDateString()} ·
+                            Projects use <span className="font-semibold">Start Date → Target/Actual End</span>; tasks use{' '}
+                            <span className="font-semibold">Created → Due Date</span>.
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <div
+                              className="overflow-hidden rounded-2xl border border-sand-200 bg-white"
+                              style={{ minWidth: layout.chartWidth + 340 }}
+                            >
+                              <div className="sticky top-0 z-10 grid grid-cols-[340px_1fr] border-b border-sand-200 bg-sand-50/95 backdrop-blur">
+                                <div className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Project / Task</div>
+                                <div className="relative h-12">
+                                  {layout.ticks.map((tick) => {
+                                    const left = timelineLeftPx(tick, layout);
+                                    return (
+                                      <div key={`project-header-tick-${tick}`} className="absolute inset-y-0" style={{ left }}>
+                                        <div className="h-full w-px bg-sand-200" />
+                                        <div className="absolute left-1 top-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sand-700">
+                                          {formatTimelineTick(tick, layout.stepDays)}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div>
+                                {projectTimelineRows.map((row) => {
+                                  const deal = dealById.get(row.project.dealId);
+                                  const org = deal ? orgById.get(deal.organizationId) : undefined;
+                                  const projectLabel = deal?.title || row.project.name || 'Project';
+                                  const projectBarColor =
+                                    row.project.status === 'completed'
+                                      ? 'bg-emerald-600'
+                                      : row.project.status === 'support'
+                                        ? 'bg-amber-500'
+                                        : 'bg-sand-700';
+                                  const projectBar = timelineBarStyle({ start: row.start, end: row.end }, layout);
+                                  return (
+                                    <div key={row.project.id} className="border-b border-sand-200 last:border-b-0">
+                                      <div className="grid grid-cols-[340px_1fr] items-center bg-sand-50/40">
+                                        <div
+                                          className="border-r border-sand-200 px-4 py-3"
+                                          onContextMenu={(e) => onItemContextMenu(e, 'project', row.project)}
+                                        >
+                                          <div className="flex items-start gap-3">
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedSet.has(row.project.id)}
+                                              onChange={() => toggleSelected(row.project.id)}
+                                              className="mt-1"
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                              <div className="truncate text-sm font-semibold text-stone-900">{projectLabel}</div>
+                                              <div className="mt-1 text-xs text-sand-700">
+                                                {org?.name || 'Unknown org'} · {row.tasks.length} tasks
+                                              </div>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => onItemActionsClick(e, 'project', row.project)}
+                                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                            >
+                                              ...
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="relative h-12 border-l border-sand-100 bg-white/60">
+                                          {layout.ticks.map((tick) => (
+                                            <div
+                                              key={`project-grid-tick-${row.project.id}-${tick}`}
+                                              className="absolute inset-y-0 w-px bg-sand-100"
+                                              style={{ left: timelineLeftPx(tick, layout) }}
+                                            />
+                                          ))}
+                                          <div
+                                            className={['absolute top-1/2 h-4 -translate-y-1/2 rounded-full', projectBarColor].join(' ')}
+                                            style={projectBar}
+                                            title={`${new Date(row.start).toLocaleDateString()} → ${new Date(row.end).toLocaleDateString()}`}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {row.tasks.length === 0 && (
+                                        <div className="grid grid-cols-[340px_1fr] items-center">
+                                          <div className="border-r border-sand-100 px-4 py-2 pl-11 text-xs text-sand-700">No tasks yet.</div>
+                                          <div className="relative h-8 border-l border-sand-100 bg-white">
+                                            {layout.ticks.map((tick) => (
+                                              <div
+                                                key={`project-empty-grid-tick-${row.project.id}-${tick}`}
+                                                className="absolute inset-y-0 w-px bg-sand-100"
+                                                style={{ left: timelineLeftPx(tick, layout) }}
+                                              />
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {row.tasks.map((tRow) => {
+                                        const owner = userById.get(tRow.task.ownerUserId);
+                                        const ownerLabel = owner ? owner.name : tRow.task.ownerUserId ? 'Unknown' : 'Unassigned';
+                                        const taskBarColor =
+                                          tRow.task.status === 'done'
+                                            ? 'bg-emerald-500'
+                                            : tRow.task.status === 'blocked'
+                                              ? 'bg-red-600'
+                                              : tRow.task.status === 'in_progress'
+                                                ? 'bg-sky-600'
+                                                : 'bg-sand-500';
+                                        const taskBar = timelineBarStyle({ start: tRow.start, end: tRow.end }, layout);
+                                        return (
+                                          <div key={tRow.task.id} className="grid grid-cols-[340px_1fr] items-center">
+                                            <div
+                                              className="border-r border-sand-100 px-4 py-2 pl-11"
+                                              onContextMenu={(e) => onItemContextMenu(e, 'task', tRow.task)}
+                                            >
+                                              <div className="flex items-start gap-3">
+                                                <div className="min-w-0 flex-1">
+                                                  <div className="truncate text-sm text-stone-900">{tRow.task.title}</div>
+                                                  <div className="mt-1 text-xs text-sand-700">
+                                                    {ownerLabel} · {tRow.task.status || 'todo'}
+                                                  </div>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => onItemActionsClick(e, 'task', tRow.task)}
+                                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                                >
+                                                  ...
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <div className="relative h-10 border-l border-sand-100 bg-white">
+                                              {layout.ticks.map((tick) => (
+                                                <div
+                                                  key={`project-task-grid-tick-${tRow.task.id}-${tick}`}
+                                                  className="absolute inset-y-0 w-px bg-sand-100"
+                                                  style={{ left: timelineLeftPx(tick, layout) }}
+                                                />
+                                              ))}
+                                              <div
+                                                className={['absolute top-1/2 h-3 -translate-y-1/2 rounded-full', taskBarColor].join(' ')}
+                                                style={taskBar}
+                                                title={`${new Date(tRow.start).toLocaleDateString()} → ${new Date(tRow.end).toLocaleDateString()}`}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -3213,6 +3478,17 @@ export default function HomePage() {
                       disabled={crudBusy}
                     >
                       List
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTasksMode('gantt')}
+                      className={[
+                        'px-3 py-2 text-xs font-semibold uppercase tracking-wide transition',
+                        tasksMode === 'gantt' ? 'bg-sand-100 text-sand-900' : 'bg-white text-sand-700 hover:bg-sand-50'
+                      ].join(' ')}
+                      disabled={crudBusy}
+                    >
+                      Gantt
                     </button>
                   </div>
                 </div>
@@ -3362,7 +3638,7 @@ export default function HomePage() {
                     })}
                   </div>
                 </div>
-              ) : (
+              ) : tasksMode === 'list' ? (
                 <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
                   <div className="grid gap-3">
                     {tasks.length === 0 ? (
@@ -3410,6 +3686,115 @@ export default function HomePage() {
                       })
                     )}
                   </div>
+                </div>
+              ) : (
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                  {tasks.length === 0 ? (
+                    <div className="text-sm text-sand-700">No tasks yet.</div>
+                  ) : filteredTasks.length === 0 ? (
+                    <div className="text-sm text-sand-700">No tasks for this project.</div>
+                  ) : !taskTimelineLayout ? (
+                    <div className="text-sm text-sand-700">Not enough date data for a timeline.</div>
+                  ) : (
+                    (() => {
+                      const layout = taskTimelineLayout;
+                      return (
+                        <div className="space-y-3">
+                          <div className="rounded-xl border border-sand-200 bg-white p-4 text-sm text-sand-700">
+                            Range: {new Date(layout.min).toLocaleDateString()} to {new Date(layout.max).toLocaleDateString()} ·
+                            Bars use <span className="font-semibold">Created</span> to{' '}
+                            <span className="font-semibold">Due Date</span>.
+                          </div>
+                          <div className="overflow-x-auto">
+                            <div
+                              className="overflow-hidden rounded-2xl border border-sand-200 bg-white"
+                              style={{ minWidth: layout.chartWidth + 340 }}
+                            >
+                              <div className="sticky top-0 z-10 grid grid-cols-[340px_1fr] border-b border-sand-200 bg-sand-50/95 backdrop-blur">
+                                <div className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">Task</div>
+                                <div className="relative h-12">
+                                  {layout.ticks.map((tick) => {
+                                    const left = timelineLeftPx(tick, layout);
+                                    return (
+                                      <div key={`task-header-tick-${tick}`} className="absolute inset-y-0" style={{ left }}>
+                                        <div className="h-full w-px bg-sand-200" />
+                                        <div className="absolute left-1 top-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sand-700">
+                                          {formatTimelineTick(tick, layout.stepDays)}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div>
+                                {taskTimelineRows.map((row) => {
+                                  const task = row.task;
+                                  const project = projectById.get(task.projectId);
+                                  const deal = project ? dealById.get(project.dealId) : undefined;
+                                  const owner = userById.get(task.ownerUserId);
+                                  const ownerLabel = owner ? owner.name : task.ownerUserId ? 'Unknown' : 'Unassigned';
+                                  const projectLabel = deal?.title || project?.name || 'Unknown project';
+                                  const barColor =
+                                    task.status === 'done'
+                                      ? 'bg-emerald-500'
+                                      : task.status === 'blocked'
+                                        ? 'bg-red-600'
+                                        : task.status === 'in_progress'
+                                          ? 'bg-sky-600'
+                                          : 'bg-sand-500';
+                                  const bar = timelineBarStyle({ start: row.start, end: row.end }, layout);
+                                  return (
+                                    <div
+                                      key={task.id}
+                                      className="grid grid-cols-[340px_1fr] items-center border-b border-sand-100 last:border-b-0"
+                                    >
+                                      <div className="border-r border-sand-100 px-4 py-3" onContextMenu={(e) => onItemContextMenu(e, 'task', task)}>
+                                        <div className="flex items-start gap-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedSet.has(task.id)}
+                                            onChange={() => toggleSelected(task.id)}
+                                            className="mt-1"
+                                          />
+                                          <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-semibold text-stone-900">{task.title}</div>
+                                            <div className="mt-1 truncate text-xs text-sand-700">
+                                              {projectLabel} · {ownerLabel} · {task.status || 'todo'}
+                                            </div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => onItemActionsClick(e, 'task', task)}
+                                            className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                          >
+                                            ...
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="relative h-10 border-l border-sand-100 bg-white">
+                                        {layout.ticks.map((tick) => (
+                                          <div
+                                            key={`task-grid-tick-${task.id}-${tick}`}
+                                            className="absolute inset-y-0 w-px bg-sand-100"
+                                            style={{ left: timelineLeftPx(tick, layout) }}
+                                          />
+                                        ))}
+                                        <div
+                                          className={['absolute top-1/2 h-3 -translate-y-1/2 rounded-full', barColor].join(' ')}
+                                          style={bar}
+                                          title={`${new Date(row.start).toLocaleDateString()} → ${new Date(row.end).toLocaleDateString()}`}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  )}
                 </div>
               )}
             </div>
