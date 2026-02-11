@@ -91,7 +91,7 @@
     --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
   }
 
-  :root[data-theme='wemadeit-gay'] {
+  :root[data-theme='wemadeit-studio'] {
     --sand-50: 243 250 248;
     --sand-100: 223 242 238;
     --sand-200: 195 230 224;

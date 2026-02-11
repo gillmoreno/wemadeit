@@ -59,7 +59,9 @@ func DefaultSettings() Settings {
 
 func NormalizeTheme(v string) string {
 	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "sand", "ocean", "forest", "graphite", "rose", "wemadeit-gay":
+	case "wemadeit-gay":
+		return "wemadeit-studio"
+	case "sand", "ocean", "forest", "graphite", "rose", "wemadeit-studio":
 		return strings.ToLower(strings.TrimSpace(v))
 	default:
 		return "sand"

@@ -3626,7 +3626,7 @@ export default function HomePage() {
                         <option value="forest">Forest</option>
                         <option value="graphite">Graphite</option>
                         <option value="rose">Rose</option>
-                        <option value="wemadeit-gay">We Made It Gay</option>
+                        <option value="wemadeit-studio">Wemadeit Studio</option>
                       </select>
                     </label>
                     <label>
@@ -3817,8 +3817,11 @@ export default function HomePage() {
       )}
 
       {edit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onMouseDown={() => setEdit(null)}>
-          <div className="panel w-full max-w-4xl p-6" onMouseDown={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 lg:items-center"
+          onMouseDown={() => setEdit(null)}
+        >
+          <div className="panel max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto p-6" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.08em] text-sand-700">
