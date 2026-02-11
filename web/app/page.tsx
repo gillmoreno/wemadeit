@@ -7,7 +7,6 @@ import {
   Interaction,
   Organization,
   Payment,
-  Pipeline,
   PipelineStage,
   Project,
   Quotation,
@@ -19,8 +18,6 @@ import {
   createInteraction,
   createOrganization,
   createPayment,
-  createPipeline,
-  createPipelineStage,
   createProject,
   createQuotation,
   createQuotationItem,
@@ -31,8 +28,6 @@ import {
   deleteInteractions,
   deleteOrganizations,
   deletePayments,
-  deletePipelineStages,
-  deletePipelines,
   deleteProjects,
   deleteQuotationItems,
   deleteQuotations,
@@ -50,9 +45,7 @@ type DealsMode = 'kanban' | 'list' | 'gantt';
 type DealsStatusFilter = 'open' | 'won' | 'lost' | 'all';
 type TasksMode = 'kanban' | 'list';
 
-const ALL_PIPELINES = '__all__';
-
-const views = ['dashboard', 'pipelines', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings'] as const;
+const views = ['dashboard', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings'] as const;
 type View = (typeof views)[number];
 
 type AppSettings = {
@@ -90,8 +83,6 @@ type CrudKind =
   | 'contact'
   | 'deal'
   | 'payment'
-  | 'pipeline'
-  | 'pipelineStage'
   | 'project'
   | 'task'
   | 'quotation'
@@ -160,7 +151,6 @@ export default function HomePage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -206,7 +196,6 @@ export default function HomePage() {
   const [dealFocusDraft, setDealFocusDraft] = useState<Partial<Deal> | null>(null);
 
   const [dealsMode, setDealsMode] = useState<DealsMode>('kanban');
-  const [dealsPipelineId, setDealsPipelineId] = useState<string>('');
   const [dealsStatus, setDealsStatus] = useState<DealsStatusFilter>('open');
   const [kanbanDragOverStageId, setKanbanDragOverStageId] = useState<string | null>(null);
 
@@ -226,11 +215,6 @@ export default function HomePage() {
   const [taskPriority, setTaskPriority] = useState<number>(1);
   const [taskEstimatedHours, setTaskEstimatedHours] = useState<number>(1);
 
-  const [pipelineName, setPipelineName] = useState('');
-  const [pipelineDescription, setPipelineDescription] = useState('');
-  const [pipelineDefault, setPipelineDefault] = useState(true);
-
-  const [stagePipelineId, setStagePipelineId] = useState('');
   const [stageName, setStageName] = useState('');
   const [stageColor, setStageColor] = useState('#CF8445');
   const [stageProbability, setStageProbability] = useState<number>(10);
@@ -286,13 +270,6 @@ export default function HomePage() {
   }, [view]);
 
   useEffect(() => {
-    if (!dealsPipelineId) {
-      const def = pipelines.find((p) => p.default) || pipelines[0];
-      if (def) setDealsPipelineId(def.id);
-    }
-  }, [dealsPipelineId, pipelines]);
-
-  useEffect(() => {
     if (view === 'deals' && dealsMode !== 'list') {
       setSelectedIds([]);
     }
@@ -335,12 +312,6 @@ export default function HomePage() {
       setDealStageId(pipelineStages[0].id);
     }
   }, [dealStageId, pipelineStages]);
-
-  useEffect(() => {
-    if (!stagePipelineId && pipelines.length > 0) {
-      setStagePipelineId(pipelines[0].id);
-    }
-  }, [pipelines, stagePipelineId]);
 
   useEffect(() => {
     if (!quoteDealId && deals.length > 0) {
@@ -414,7 +385,6 @@ export default function HomePage() {
       setContacts(data.contacts);
       setDeals(data.deals);
       setPayments(data.payments);
-      setPipelines(data.pipelines);
       setPipelineStages(data.pipelineStages);
       setProjects(data.projects);
       setTasks(data.tasks);
@@ -554,12 +524,6 @@ export default function HomePage() {
     return map;
   }, [tasks]);
 
-  const pipelineById = useMemo(() => {
-    const map = new Map<string, Pipeline>();
-    pipelines.forEach((p) => map.set(p.id, p));
-    return map;
-  }, [pipelines]);
-
   const stageById = useMemo(() => {
     const map = new Map<string, PipelineStage>();
     pipelineStages.forEach((st) => map.set(st.id, st));
@@ -594,16 +558,6 @@ export default function HomePage() {
     () => users.filter((u) => u.role === 'admin' && u.id !== me?.id).length,
     [users, me?.id]
   );
-  const dealsByStageId = useMemo(() => {
-    const map = new Map<string, number>();
-    deals.forEach((d) => {
-      const id = (d.pipelineStageId || '').trim();
-      if (!id) return;
-      map.set(id, (map.get(id) || 0) + 1);
-    });
-    return map;
-  }, [deals]);
-
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const paymentSelectedSet = useMemo(() => new Set(paymentSelectedIds), [paymentSelectedIds]);
 
@@ -612,8 +566,6 @@ export default function HomePage() {
     contact: { singular: 'contact', plural: 'contacts' },
     deal: { singular: 'deal', plural: 'deals' },
     payment: { singular: 'payment', plural: 'payments' },
-    pipeline: { singular: 'pipeline', plural: 'pipelines' },
-    pipelineStage: { singular: 'stage', plural: 'stages' },
     project: { singular: 'project', plural: 'projects' },
     task: { singular: 'task', plural: 'tasks' },
     quotation: { singular: 'quotation', plural: 'quotations' },
@@ -797,12 +749,6 @@ export default function HomePage() {
           await deletePayments(clean);
           setPaymentSelectedIds([]);
           break;
-        case 'pipeline':
-          await deletePipelines(clean);
-          break;
-        case 'pipelineStage':
-          await deletePipelineStages(clean);
-          break;
         case 'project':
           await deleteProjects(clean);
           break;
@@ -853,12 +799,6 @@ export default function HomePage() {
           break;
         case 'payment':
           await createPayment(edit.draft as Payment);
-          break;
-        case 'pipeline':
-          await createPipeline(edit.draft as Pipeline);
-          break;
-        case 'pipelineStage':
-          await createPipelineStage(edit.draft as PipelineStage);
           break;
         case 'project':
           await createProject(edit.draft as Project);
@@ -1144,60 +1084,6 @@ export default function HomePage() {
       setNotice('Task saved.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create task';
-      setNotice(msg);
-    }
-  }
-
-  async function onCreatePipeline() {
-    setNotice(null);
-    const name = pipelineName.trim();
-    if (!name) {
-      setNotice('Pipeline name is required.');
-      return;
-    }
-    try {
-      const created = await createPipeline({
-        name,
-        description: pipelineDescription.trim(),
-        default: pipelineDefault
-      });
-      setPipelineName('');
-      setPipelineDescription('');
-      setPipelineDefault(false);
-      setStagePipelineId(created.id);
-      await refresh();
-      setNotice('Pipeline saved.');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create pipeline';
-      setNotice(msg);
-    }
-  }
-
-  async function onCreateStage() {
-    setNotice(null);
-    const pipelineId = stagePipelineId.trim();
-    const name = stageName.trim();
-    if (!pipelineId) {
-      setNotice('Select a pipeline.');
-      return;
-    }
-    if (!name) {
-      setNotice('Stage name is required.');
-      return;
-    }
-    try {
-      await createPipelineStage({
-        pipelineId,
-        name,
-        color: stageColor.trim(),
-        probability: Number(stageProbability) || 0
-      });
-      setStageName('');
-      setStageProbability(10);
-      await refresh();
-      setNotice('Stage saved.');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to create stage';
       setNotice(msg);
     }
   }
@@ -1524,10 +1410,6 @@ export default function HomePage() {
               <strong>{contacts.length}</strong>
             </div>
             <div className="flex items-center justify-between">
-              <span>Pipelines</span>
-              <strong>{pipelines.length}</strong>
-            </div>
-            <div className="flex items-center justify-between">
               <span>Deals (open)</span>
               <strong>{openDeals}</strong>
             </div>
@@ -1635,104 +1517,6 @@ export default function HomePage() {
 	                  })}
 	                </div>
 	              </div>
-            </div>
-          )}
-
-          {view === 'pipelines' && (
-            <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-3xl text-sand-900">Pipelines</h2>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => startNew('pipeline', { name: '', description: '', default: pipelines.length === 0 })}
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
-                    disabled={crudBusy}
-                  >
-                    New pipeline
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      startNew('pipelineStage', {
-                        pipelineId: (pipelines.find((p) => p.default)?.id || pipelines[0]?.id || '').trim(),
-                        name: '',
-                        color: '#CF8445',
-                        probability: 10
-                      })
-                    }
-                    className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={crudBusy || pipelines.length === 0}
-                    title={pipelines.length === 0 ? 'Create a pipeline first' : 'Create a stage'}
-                  >
-                    New stage
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
-                <div className="space-y-4">
-                  {pipelines.length === 0 && <div className="text-sm text-sand-700">No pipelines yet.</div>}
-                  {pipelines.map((p) => {
-                    const stages = pipelineStages
-                      .filter((st) => st.pipelineId === p.id)
-                      .slice()
-                      .sort((a, b) => (a.position || 0) - (b.position || 0));
-                    return (
-                      <div
-                        key={p.id}
-                        className="rounded-2xl border border-sand-200 bg-white p-5"
-                        onContextMenu={(e) => onItemContextMenu(e, 'pipeline', p)}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <div className="text-lg font-semibold text-stone-900">{p.name}</div>
-                            {p.description && <div className="mt-1 text-sm text-sand-700">{p.description}</div>}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {p.default && <span className="pill">DEFAULT</span>}
-                            <span className="pill">{stages.length} stages</span>
-                            <button
-                              type="button"
-                              onClick={(e) => onItemActionsClick(e, 'pipeline', p)}
-                              className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                            >
-                              ...
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {stages.map((st) => (
-                            <div
-                              key={st.id}
-                              className="rounded-xl border border-sand-200 bg-sand-50 p-3"
-                              onContextMenu={(e) => onItemContextMenu(e, 'pipelineStage', st)}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="font-semibold text-stone-900">{st.name}</div>
-                                <div className="flex items-start gap-2">
-                                  <div className="h-4 w-4 rounded-full border border-sand-200" style={{ background: st.color || '#e9c29a' }} />
-                                  <button
-                                    type="button"
-                                    onClick={(e) => onItemActionsClick(e, 'pipelineStage', st)}
-                                    className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
-                                  >
-                                    ...
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-sand-700">
-                                <span className="pill">{st.probability || 0}%</span>
-                                <span className="pill">{dealsByStageId.get(st.id) || 0} deals</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 
@@ -2888,35 +2672,16 @@ export default function HomePage() {
                     <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
                       {(() => {
                           const statusDeals = dealsStatus === 'all' ? deals : deals.filter((d) => d.status === dealsStatus);
-                          const stageIdsToShow = new Set<string>();
                           const stagesToShow = [...pipelineStages]
-                            .filter((st) => {
-                              if (!dealsPipelineId || dealsPipelineId === ALL_PIPELINES) return true;
-                              return st.pipelineId === dealsPipelineId;
-                            })
-                            .sort((a, b) => {
-                              if (dealsPipelineId === ALL_PIPELINES) {
-                                const ap = pipelineById.get(a.pipelineId)?.name || '';
-                                const bp = pipelineById.get(b.pipelineId)?.name || '';
-                                if (ap !== bp) return ap.localeCompare(bp);
-                              }
-                              return (a.position || 0) - (b.position || 0);
-                            });
+                            .slice()
+                            .sort((a, b) => (a.position || 0) - (b.position || 0) || a.name.localeCompare(b.name));
+                          const stageIdsToShow = new Set<string>();
                           for (const st of stagesToShow) stageIdsToShow.add(st.id);
 
-                          const filteredDeals =
-                            !dealsPipelineId || dealsPipelineId === ALL_PIPELINES
-                              ? statusDeals
-                              : statusDeals.filter((d) => stageById.get(String(d.pipelineStageId || '').trim())?.pipelineId === dealsPipelineId);
+                          const filteredDeals = statusDeals;
 
                           const preferredStageId = (() => {
-                            const sorted = (arr: PipelineStage[]) => arr.slice().sort((a, b) => (a.position || 0) - (b.position || 0));
-                            const selectedPipelineID =
-                              dealsPipelineId && dealsPipelineId !== ALL_PIPELINES
-                                ? dealsPipelineId
-                                : (pipelines.find((p) => p.default)?.id || pipelines[0]?.id || '').trim();
-                            if (!selectedPipelineID) return '';
-                            const st = sorted(pipelineStages.filter((s) => s.pipelineId === selectedPipelineID))[0];
+                            const st = stagesToShow[0];
                             return (st?.id || '').trim();
                           })();
 
@@ -2986,21 +2751,6 @@ export default function HomePage() {
                                   >
                                     New deal
                                   </button>
-                                  {pipelines.length > 0 && (
-                                    <select
-                                      className="rounded-xl border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 focus:border-sand-500 focus:outline-none focus:ring-2 focus:ring-sand-300"
-                                      value={dealsPipelineId || ALL_PIPELINES}
-                                      onChange={(e) => setDealsPipelineId(e.target.value)}
-                                    >
-                                      <option value={ALL_PIPELINES}>All pipelines</option>
-                                      {pipelines.map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                          {p.name}
-                                          {p.default ? ' (default)' : ''}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
 
                                   <select
                                     className="rounded-xl border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 focus:border-sand-500 focus:outline-none focus:ring-2 focus:ring-sand-300"
@@ -3129,12 +2879,9 @@ export default function HomePage() {
 
                                     const columns: Array<{ id: string; title: string; color: string; stage: PipelineStage; deals: Deal[] }> =
                                       stagesToShow.map((st) => {
-                                        const pipelineName = pipelineById.get(st.pipelineId)?.name || '';
-                                        const title =
-                                          dealsPipelineId === ALL_PIPELINES && pipelineName ? `${pipelineName} · ${st.name}` : st.name;
                                         return {
                                           id: st.id,
-                                          title,
+                                          title: st.name,
                                           color: st.color || '#e9c29a',
                                           stage: st,
                                           deals: byStageId.get(st.id) || []
@@ -3144,9 +2891,7 @@ export default function HomePage() {
                                     return (
                                       <div className="flex h-full min-h-0 flex-col">
                                         {pipelineStages.length === 0 && (
-                                          <div className="text-sm text-sand-700">
-                                            No pipeline stages yet. Create stages in <span className="font-semibold">Pipelines</span> first.
-                                          </div>
+                                          <div className="text-sm text-sand-700">No deal stages available yet.</div>
                                         )}
 
                                         {pipelineStages.length > 0 && (
@@ -4515,69 +4260,6 @@ export default function HomePage() {
               </div>
             )}
 
-            {edit.kind === 'pipeline' && (
-              <div className="mt-6 grid gap-4">
-                <label>
-                  <span className="field-label">Name</span>
-                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
-                </label>
-                <label>
-                  <span className="field-label">Description</span>
-                  <input
-                    className="field-input"
-                    value={edit.draft.description || ''}
-                    onChange={(e) => updateEditDraft({ description: e.target.value })}
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm text-sand-700">
-                  <input type="checkbox" checked={!!edit.draft.default} onChange={(e) => updateEditDraft({ default: e.target.checked })} />
-                  Default pipeline
-                </label>
-              </div>
-            )}
-
-            {edit.kind === 'pipelineStage' && (
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <label className="md:col-span-2">
-                  <span className="field-label">Pipeline</span>
-                  <select className="field-input" value={edit.draft.pipelineId || ''} onChange={(e) => updateEditDraft({ pipelineId: e.target.value })}>
-                    <option value="">Select...</option>
-                    {pipelines.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span className="field-label">Name</span>
-                  <input className="field-input" value={edit.draft.name || ''} onChange={(e) => updateEditDraft({ name: e.target.value })} />
-                </label>
-                <label>
-                  <span className="field-label">Color</span>
-                  <input className="field-input" type="color" value={edit.draft.color || '#CF8445'} onChange={(e) => updateEditDraft({ color: e.target.value })} />
-                </label>
-                <label>
-                  <span className="field-label">Position</span>
-                  <input
-                    className="field-input"
-                    inputMode="numeric"
-                    value={String(edit.draft.position ?? 0)}
-                    onChange={(e) => updateEditDraft({ position: Number(e.target.value) || 0 })}
-                  />
-                </label>
-                <label>
-                  <span className="field-label">Probability (%)</span>
-                  <input
-                    className="field-input"
-                    inputMode="decimal"
-                    value={String(edit.draft.probability ?? 0)}
-                    onChange={(e) => updateEditDraft({ probability: Number(e.target.value) || 0 })}
-                  />
-                </label>
-              </div>
-            )}
-
             {edit.kind === 'user' && (
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <label className="md:col-span-2">
@@ -5073,17 +4755,6 @@ export default function HomePage() {
                 Deleting a quotation also deletes its quotation items.
               </div>
             )}
-            {confirmDelete.kind === 'pipelineStage' && (
-              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
-                Deals in this stage will be moved to another stage (or become unassigned) before deletion.
-              </div>
-            )}
-            {confirmDelete.kind === 'pipeline' && (
-              <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">
-                Stages in this pipeline will be removed; deals will be moved to another pipeline&apos;s first stage (or become unassigned).
-              </div>
-            )}
-
             <div className="mt-8 flex flex-wrap justify-end gap-2">
               <button
                 type="button"

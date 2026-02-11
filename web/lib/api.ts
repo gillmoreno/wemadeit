@@ -79,15 +79,6 @@ export type Payment = {
   updatedAt: string;
 };
 
-export type Pipeline = {
-  id: string;
-  name: string;
-  description: string;
-  default: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type PipelineStage = {
   id: string;
   pipelineId: string;
@@ -203,7 +194,6 @@ export type AppState = {
   contacts: Contact[];
   deals: Deal[];
   payments: Payment[];
-  pipelines: Pipeline[];
   pipelineStages: PipelineStage[];
   projects: Project[];
   tasks: Task[];
@@ -284,7 +274,6 @@ export async function getState(): Promise<AppState> {
     contacts: Array.isArray(data?.contacts) ? (data.contacts as Contact[]) : [],
     deals: Array.isArray(data?.deals) ? (data.deals as Deal[]) : [],
     payments: Array.isArray(data?.payments) ? (data.payments as Payment[]) : [],
-    pipelines: Array.isArray(data?.pipelines) ? (data.pipelines as Pipeline[]) : [],
     pipelineStages: Array.isArray(data?.pipelineStages) ? (data.pipelineStages as PipelineStage[]) : [],
     projects: Array.isArray(data?.projects) ? (data.projects as Project[]) : [],
     tasks: Array.isArray(data?.tasks) ? (data.tasks as Task[]) : [],
@@ -320,20 +309,6 @@ export async function createPayment(payment: Partial<Payment>) {
   return request<Payment>('/api/payments', {
     method: 'POST',
     body: JSON.stringify(payment)
-  });
-}
-
-export async function createPipeline(pipeline: Partial<Pipeline>) {
-  return request<Pipeline>('/api/pipelines', {
-    method: 'POST',
-    body: JSON.stringify(pipeline)
-  });
-}
-
-export async function createPipelineStage(stage: Partial<PipelineStage>) {
-  return request<PipelineStage>('/api/pipeline_stages', {
-    method: 'POST',
-    body: JSON.stringify(stage)
   });
 }
 
@@ -409,20 +384,6 @@ export async function deleteDeals(ids: string[] | string) {
 
 export async function deletePayments(ids: string[] | string) {
   return request<DeleteResponse>('/api/payments', {
-    method: 'DELETE',
-    body: JSON.stringify({ ids: normalizeIDs(ids) })
-  });
-}
-
-export async function deletePipelines(ids: string[] | string) {
-  return request<DeleteResponse>('/api/pipelines', {
-    method: 'DELETE',
-    body: JSON.stringify({ ids: normalizeIDs(ids) })
-  });
-}
-
-export async function deletePipelineStages(ids: string[] | string) {
-  return request<DeleteResponse>('/api/pipeline_stages', {
     method: 'DELETE',
     body: JSON.stringify({ ids: normalizeIDs(ids) })
   });

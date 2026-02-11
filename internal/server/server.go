@@ -57,8 +57,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/contacts", s.requireAuth(s.handleContacts))
 	mux.HandleFunc("/api/deals", s.requireAuth(s.handleDeals))
 	mux.HandleFunc("/api/payments", s.requireAuth(s.handlePayments))
-	mux.HandleFunc("/api/pipelines", s.requireAuth(s.handlePipelines))
-	mux.HandleFunc("/api/pipeline_stages", s.requireAuth(s.handlePipelineStages))
 	mux.HandleFunc("/api/projects", s.requireAuth(s.handleProjects))
 	mux.HandleFunc("/api/tasks", s.requireAuth(s.handleTasks))
 	mux.HandleFunc("/api/users", s.requireAuth(s.handleUsers))
@@ -277,11 +275,6 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 		return
 	}
-	pipelines, err := s.store.LoadPipelines()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-		return
-	}
 	pipelineStages, err := s.store.LoadPipelineStages()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
@@ -308,7 +301,6 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		"contacts":       contacts,
 		"deals":          deals,
 		"payments":       payments,
-		"pipelines":      pipelines,
 		"pipelineStages": pipelineStages,
 		"projects":       projects,
 		"tasks":          tasks,
@@ -601,135 +593,6 @@ func (s *Server) handlePayments(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if err := s.store.DeletePayment(id); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-				return
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
-	}
-}
-
-func (s *Server) handlePipelines(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		pipelines, err := s.store.LoadPipelines()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-			return
-		}
-		writeJSON(w, http.StatusOK, pipelines)
-	case http.MethodPost:
-		var p models.Pipeline
-		if err := readJSON(r, &p); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
-			return
-		}
-		now := time.Now()
-		if p.ID == "" {
-			p.ID = newID()
-		}
-		if p.CreatedAt.IsZero() {
-			p.CreatedAt = now
-		}
-		p.UpdatedAt = now
-
-		if strings.TrimSpace(p.Name) == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("name is required"))
-			return
-		}
-
-		if p.Default {
-			if _, err := s.store.DB.Exec(`UPDATE pipelines SET is_default = 0 WHERE id <> ?;`, p.ID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-				return
-			}
-		}
-
-		if err := s.store.SavePipeline(p); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-			return
-		}
-		writeJSON(w, http.StatusOK, p)
-	case http.MethodDelete:
-		ids, err := deleteIDsFromRequest(r)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
-			return
-		}
-		for _, id := range ids {
-			if strings.TrimSpace(id) == "" {
-				continue
-			}
-			if err := s.store.DeletePipeline(id); err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-				return
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": ids})
-	default:
-		writeJSON(w, http.StatusMethodNotAllowed, errorResponse("method not allowed"))
-	}
-}
-
-func (s *Server) handlePipelineStages(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		stages, err := s.store.LoadPipelineStages()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-			return
-		}
-		writeJSON(w, http.StatusOK, stages)
-	case http.MethodPost:
-		var st models.PipelineStage
-		if err := readJSON(r, &st); err != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
-			return
-		}
-		now := time.Now()
-		if st.ID == "" {
-			st.ID = newID()
-		}
-		if st.CreatedAt.IsZero() {
-			st.CreatedAt = now
-		}
-		st.UpdatedAt = now
-
-		if strings.TrimSpace(st.PipelineID) == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("pipelineId is required"))
-			return
-		}
-		if strings.TrimSpace(st.Name) == "" {
-			writeJSON(w, http.StatusBadRequest, errorResponse("name is required"))
-			return
-		}
-		if st.Position <= 0 {
-			existing, err := s.store.LoadPipelineStagesByPipeline(st.PipelineID)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-				return
-			}
-			st.Position = len(existing) + 1
-		}
-
-		if err := s.store.SavePipelineStage(st); err != nil {
-			writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
-			return
-		}
-		writeJSON(w, http.StatusOK, st)
-	case http.MethodDelete:
-		ids, err := deleteIDsFromRequest(r)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errorResponse(err.Error()))
-			return
-		}
-		for _, id := range ids {
-			if strings.TrimSpace(id) == "" {
-				continue
-			}
-			if err := s.store.DeletePipelineStage(id); err != nil {
 				writeJSON(w, http.StatusInternalServerError, errorResponse(err.Error()))
 				return
 			}
