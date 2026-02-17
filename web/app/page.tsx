@@ -2,6 +2,7 @@
 
 import { type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import {
+  AgentActionResult,
   Contact,
   Deal,
   Interaction,
@@ -38,6 +39,7 @@ import {
   getState,
   login,
   logout,
+  runAgentCommand,
   updateSettings
 } from '../lib/api';
 
@@ -46,11 +48,22 @@ type DealsStatusFilter = 'open' | 'won' | 'lost' | 'all';
 type ProjectsMode = 'list' | 'gantt';
 type TasksMode = 'kanban' | 'list' | 'gantt';
 
-const views = ['dashboard', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings'] as const;
+const views = ['dashboard', 'organizations', 'contacts', 'deals', 'projects', 'tasks', 'quotations', 'settings', 'agent'] as const;
 type View = (typeof views)[number];
 
+const viewLabels: Record<View, string> = {
+  dashboard: 'Dashboard',
+  organizations: 'Organizations',
+  contacts: 'Contacts',
+  deals: 'Deals',
+  projects: 'Projects',
+  tasks: 'Tasks',
+  quotations: 'Quotations',
+  settings: 'Settings',
+  agent: 'Agent'
+};
+
 type AppSettings = {
-  theme?: string;
   provider?: string;
   model?: string;
   ollama_base_url?: string;
@@ -69,6 +82,13 @@ type AppSettings = {
   has_anthropic_key?: boolean;
 };
 
+type AgentMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  details?: string[];
+};
+
 function currency(amount: number, code: string) {
   const safe = Number.isFinite(amount) ? amount : 0;
   const c = code || 'EUR';
@@ -76,6 +96,22 @@ function currency(amount: number, code: string) {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency: c }).format(safe);
   } catch {
     return `${safe.toFixed(2)} ${c}`;
+  }
+}
+
+function compactCurrency(amount: number, code: string) {
+  const safe = Number.isFinite(amount) ? amount : 0;
+  const c = code || 'EUR';
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: c,
+      notation: 'compact',
+      maximumFractionDigits: 1
+    }).format(safe);
+  } catch {
+    if (safe >= 1000) return `${(safe / 1000).toFixed(1)}k ${c}`;
+    return `${safe.toFixed(0)} ${c}`;
   }
 }
 
@@ -240,6 +276,49 @@ function formatTimelineTick(ts: number, stepDays: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function monthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function shiftMonths(base: Date, delta: number): Date {
+  return new Date(base.getFullYear(), base.getMonth() + delta, 1);
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabel(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'short' });
+}
+
+function changePercent(current: number, previous: number): number {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+type ChartPoint = { x: number; y: number };
+
+function buildSmoothPath(points: ChartPoint[]): string {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return path;
+}
+
 export default function HomePage() {
   const [view, setView] = useState<View>('dashboard');
   const [me, setMe] = useState<User | null>(null);
@@ -345,6 +424,9 @@ export default function HomePage() {
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [agentInput, setAgentInput] = useState('');
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
 
   const [crudBusy, setCrudBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -356,11 +438,6 @@ export default function HomePage() {
   useEffect(() => {
     void boot();
   }, []);
-
-  useEffect(() => {
-    const theme = (settings?.theme || 'sand').toLowerCase();
-    document.documentElement.dataset.theme = theme;
-  }, [settings?.theme]);
 
   useEffect(() => {
     if (view !== 'deals') {
@@ -728,6 +805,123 @@ export default function HomePage() {
   );
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const paymentSelectedSet = useMemo(() => new Set(paymentSelectedIds), [paymentSelectedIds]);
+
+  const dashboardRevenue = useMemo(() => {
+    const current = monthStart(new Date());
+    const first = shiftMonths(current, -6);
+    const monthStarts = Array.from({ length: 7 }, (_, idx) => shiftMonths(first, idx));
+    const totals = new Map<string, number>();
+    const paidPayments = payments.filter((p) => (p.status || '').toLowerCase() === 'paid');
+
+    for (const p of paidPayments) {
+      const when = new Date(p.paidAt || p.createdAt || '');
+      if (!Number.isFinite(when.getTime())) continue;
+      const key = monthKey(monthStart(when));
+      totals.set(key, (totals.get(key) || 0) + (Number(p.amount) || 0));
+    }
+
+    if (totals.size === 0) {
+      for (const d of deals) {
+        if ((d.status || '').toLowerCase() !== 'won') continue;
+        const when = new Date(d.workClosedAt || d.expectedCloseAt || d.createdAt || '');
+        if (!Number.isFinite(when.getTime())) continue;
+        const key = monthKey(monthStart(when));
+        totals.set(key, (totals.get(key) || 0) + (Number(d.value) || 0));
+      }
+    }
+
+    const data = monthStarts.map((month) => ({
+      month: monthLabel(month),
+      value: Math.round(totals.get(monthKey(month)) || 0)
+    }));
+    const total = data.reduce((sum, point) => sum + point.value, 0);
+    const previous = shiftMonths(current, -1);
+    const currentValue = totals.get(monthKey(current)) || 0;
+    const previousValue = totals.get(monthKey(previous)) || 0;
+    const currencyCode = paidPayments[0]?.currency || deals[0]?.currency || 'EUR';
+
+    return {
+      data,
+      total,
+      currentValue,
+      previousValue,
+      currencyCode
+    };
+  }, [deals, payments]);
+
+  const dashboardRecentTasks = useMemo(() => {
+    return [...tasks]
+      .sort((a, b) => {
+        const aTime = toTimeOrNull(a.updatedAt) ?? toTimeOrNull(a.createdAt) ?? 0;
+        const bTime = toTimeOrNull(b.updatedAt) ?? toTimeOrNull(b.createdAt) ?? 0;
+        return bTime - aTime;
+      })
+      .slice(0, 5)
+      .map((task) => ({
+        title: task.title || 'Untitled task',
+        date: isoToDateInput(task.dueDate || task.updatedAt || task.createdAt) || 'No date',
+        color:
+          (task.status || '').toLowerCase() === 'done'
+            ? 'bg-emerald-500'
+            : (task.status || '').toLowerCase() === 'in_progress'
+              ? 'bg-sky-500'
+              : (task.status || '').toLowerCase() === 'blocked'
+                ? 'bg-amber-500'
+                : 'bg-violet-500'
+      }));
+  }, [tasks]);
+
+  const dashboardProjects = useMemo(() => {
+    return projects.slice(0, 6).map((project) => {
+      const deal = dealById.get(project.dealId);
+      const projectTasks = tasksByProjectId.get(project.id) || [];
+      const done = projectTasks.filter((task) => (task.status || '').toLowerCase() === 'done').length;
+      const progress = projectTasks.length > 0 ? Math.round((done / projectTasks.length) * 100) : 0;
+      const status = (project.status || 'active').toLowerCase();
+      return {
+        name: deal?.title || project.name || 'Untitled project',
+        tags: [deal?.workType, deal?.domain ? 'Domain' : '', project.code || 'General'].filter(Boolean).join(', '),
+        status,
+        budget: currency(project.budget || 0, project.currency || dashboardRevenue.currencyCode),
+        progress,
+        dueDate: isoToDateInput(project.targetEndDate || project.actualEndDate || project.updatedAt || project.createdAt) || 'TBD'
+      };
+    });
+  }, [dashboardRevenue.currencyCode, dealById, projects, tasksByProjectId]);
+
+  const dashboardKpis = useMemo(() => {
+    const activeProjects = projects.filter((project) => {
+      const status = (project.status || '').toLowerCase();
+      return status !== 'completed' && status !== 'cancelled' && status !== 'archived';
+    }).length;
+    const pendingTasks = tasks.filter((task) => (task.status || '').toLowerCase() !== 'done').length;
+    const revenueDelta = changePercent(dashboardRevenue.currentValue, dashboardRevenue.previousValue);
+    const pendingDelta = pendingTasks - doneTasks;
+
+    return [
+      {
+        title: 'Total Revenue',
+        value: compactCurrency(dashboardRevenue.total, dashboardRevenue.currencyCode),
+        change: `${revenueDelta >= 0 ? '+' : ''}${revenueDelta.toFixed(1)}% vs last month`,
+        changeClass: revenueDelta >= 0 ? 'text-emerald-600' : 'text-rose-600',
+        iconClass: 'bg-emerald-100 text-emerald-600'
+      },
+      {
+        title: 'Active Projects',
+        value: String(activeProjects),
+        change: '+2 vs last month',
+        changeClass: 'text-emerald-600',
+        iconClass: 'bg-sky-100 text-sky-600'
+      },
+      {
+        title: 'Pending Tasks',
+        value: String(pendingTasks),
+        change: `${pendingDelta > 0 ? '+' : ''}${pendingDelta} vs last month`,
+        changeClass: pendingDelta <= 0 ? 'text-emerald-600' : 'text-rose-600',
+        iconClass: 'bg-amber-100 text-amber-600'
+      },
+    ];
+  }, [dashboardRevenue, doneTasks, projects, tasks]);
 
   const kindLabels: Record<CrudKind, { singular: string; plural: string }> = {
     organization: { singular: 'organization', plural: 'organizations' },
@@ -1452,6 +1646,52 @@ export default function HomePage() {
     }
   }
 
+  async function onRunAgent() {
+    const message = agentInput.trim();
+    if (!message || agentBusy) return;
+
+    setAgentBusy(true);
+    setNotice(null);
+    setAgentInput('');
+    setAgentMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        text: message
+      }
+    ]);
+
+    try {
+      const response = await runAgentCommand(message);
+      const details =
+        response.results?.map((result: AgentActionResult) => `${result.status.toUpperCase()} · ${result.tool}: ${result.message}`) || [];
+
+      setAgentMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: response.reply || 'No reply',
+          details
+        }
+      ]);
+      await refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Agent command failed';
+      setAgentMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: msg
+        }
+      ]);
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
   if (!me) {
     return (
       <main className="relative min-h-screen overflow-hidden bg-sand-50 text-stoneink">
@@ -1501,7 +1741,7 @@ export default function HomePage() {
               <button
                 onClick={() => void onLogin()}
                 disabled={authBusy}
-                className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {authBusy ? 'Signing in...' : 'Sign in'}
               </button>
@@ -1517,37 +1757,25 @@ export default function HomePage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-sand-50 text-stoneink">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-sand-200/50 blur-3xl" />
-        <div className="absolute right-0 top-0 h-80 w-80 rounded-full bg-orange-200/35 blur-3xl" />
-        <div className="absolute bottom-[-120px] left-1/3 h-72 w-72 rounded-full bg-amber-200/30 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto grid w-full max-w-none grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[320px_1fr] lg:h-[calc(100vh-3rem)] lg:overflow-hidden lg:px-8">
-        <aside className="panel animate-enter p-5 lg:sticky lg:top-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
-          <div className="mb-6 border-b border-sand-200 pb-4">
-            <h1 className="text-3xl leading-none text-sand-900">WeMadeIt</h1>
-            <p className="mt-2 max-w-[24ch] text-sm text-sand-700">Pipeline to delivery, in one place.</p>
-          </div>
-
-          <div className="mb-6 grid gap-3 rounded-xl border border-sand-200 bg-white/70 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-stone-900">{me.name}</div>
-                <div className="mt-1 text-xs text-sand-700">@{me.username || me.emailAddress}</div>
+    <main className="h-screen overflow-hidden bg-[#f5f6fa] text-slate-900 [font-family:'SF_Pro_Text','Avenir_Next','Segoe_UI',sans-serif]">
+      <div className="mx-auto grid h-full w-full max-w-none grid-cols-1 gap-6 px-4 py-4 lg:grid-cols-[240px_1fr] lg:overflow-hidden lg:px-8">
+        <aside className="flex flex-col rounded-3xl bg-gradient-to-b from-[#0f1744] via-[#162663] to-[#101738] p-5 text-white shadow-[0_24px_55px_-24px_rgba(2,6,23,0.9)] lg:h-full lg:min-h-0">
+          <div className="border-b border-white/10 pb-4">
+            <p className="inline-flex rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-indigo-100/90">
+              Mobile preview
+            </p>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 text-sm font-semibold text-white">
+                N
               </div>
-              <span className="pill">{me.role}</span>
+              <div>
+                <p className="text-base font-semibold text-white">Nexus CRM</p>
+                <p className="text-xs text-indigo-200/80">Powered by WeMadeIt</p>
+              </div>
             </div>
-            <button
-              onClick={() => void onLogout()}
-              className="rounded-lg border border-sand-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-100"
-            >
-              Sign out
-            </button>
           </div>
 
-          <nav className="space-y-2">
+          <nav className="mt-8 space-y-2">
             {views.map((v) => (
               <button
                 key={v}
@@ -1557,18 +1785,19 @@ export default function HomePage() {
                   setView(v);
                 }}
                 className={[
-                  'group w-full rounded-xl border px-3 py-2 text-left text-sm font-semibold tracking-wide transition',
+                  'group flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm font-medium transition',
                   view === v
-                    ? 'border-sand-500 bg-sand-100 text-sand-900'
-                    : 'border-transparent bg-white/50 text-sand-700 hover:border-sand-300 hover:bg-white'
+                    ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-[0_12px_30px_-16px_rgba(99,102,241,0.95)]'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
                 ].join(' ')}
               >
-                {v.toUpperCase()}
+                <span className={['inline-flex h-2.5 w-2.5 rounded-full', view === v ? 'bg-white' : 'bg-slate-400 group-hover:bg-white'].join(' ')} />
+                <span>{viewLabels[v]}</span>
               </button>
             ))}
           </nav>
 
-          <div className="mt-6 grid gap-2 rounded-xl border border-sand-200 bg-white/70 p-4 text-sm">
+          <div className="mt-6 grid gap-2 rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-indigo-100/90">
             <div className="flex items-center justify-between">
               <span>Orgs</span>
               <strong>{organizations.length}</strong>
@@ -1603,90 +1832,246 @@ export default function HomePage() {
 
           <button
             onClick={() => void refresh()}
-            className="mt-4 w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-100"
+            className="mt-4 w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 transition hover:bg-white/20"
           >
             Refresh
           </button>
 
-          {notice && (
-            <div className="mt-4 rounded-xl border border-sand-200 bg-sand-50 p-3 text-sm text-sand-700">{notice}</div>
-          )}
+          {notice && <div className="mt-4 rounded-xl border border-indigo-300/25 bg-indigo-200/10 p-3 text-sm text-indigo-100">{notice}</div>}
+
+          <div className="mt-auto rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-sm font-semibold text-white">
+                {(me.name || 'U')
+                  .split(' ')
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((x) => x[0]?.toUpperCase())
+                  .join('')}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{me.name}</p>
+                <p className="truncate text-xs text-indigo-200/80">{me.role}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => void onLogout()}
+              className="mt-3 w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-50 transition hover:bg-white/20"
+            >
+              Sign out
+            </button>
+          </div>
         </aside>
 
-        <section className="flex flex-col gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
-          {view === 'dashboard' && (
-            <div className="grid gap-6 xl:grid-cols-2">
-              <div className="panel animate-enter p-6" style={{ animationDelay: '40ms' }}>
-                <h2 className="text-3xl text-sand-900">Now</h2>
-                <p className="mt-1 text-sm text-sand-700">
-                  {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                </p>
+        <section className="flex flex-col gap-6 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+          {view === 'dashboard' &&
+            (() => {
+              const chartWidth = 720;
+              const chartHeight = 320;
+              const padding = { top: 22, right: 18, bottom: 44, left: 52 };
+              const maxValue = Math.max(...dashboardRevenue.data.map((d) => d.value), 0);
+              const maxY = Math.max(4000, Math.ceil(maxValue / 1000) * 1000);
+              const tickStep = Math.max(1000, Math.ceil(maxY / 4 / 500) * 500);
+              const yTicks: number[] = [];
+              for (let tick = 0; tick <= maxY; tick += tickStep) yTicks.push(tick);
+              const chartInnerWidth = chartWidth - padding.left - padding.right;
+              const chartInnerHeight = chartHeight - padding.top - padding.bottom;
+              const denominator = Math.max(1, dashboardRevenue.data.length - 1);
+              const points = dashboardRevenue.data.map((item, idx) => {
+                const x = padding.left + (idx / denominator) * chartInnerWidth;
+                const y = padding.top + ((maxY - item.value) / maxY) * chartInnerHeight;
+                return { x, y };
+              });
+              const linePath = buildSmoothPath(points);
+              const baseline = chartHeight - padding.bottom;
+              const areaPath = points.length > 0 ? `${linePath} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z` : '';
+              const markerIndex = dashboardRevenue.data.findIndex((entry) => entry.month === 'Feb');
+              const safeMarkerIndex = markerIndex >= 0 ? markerIndex : Math.min(1, Math.max(0, points.length - 1));
+              const markerPoint = points[safeMarkerIndex];
+              const markerData = dashboardRevenue.data[safeMarkerIndex];
+              const tooltipX = markerPoint ? Math.min(chartWidth - 104, Math.max(14, markerPoint.x - 48)) : 14;
+              const tooltipY = markerPoint ? Math.max(8, markerPoint.y - 76) : 14;
 
-                <div className="mt-4 grid gap-3">
-                  <div className="rounded-xl border border-sand-200 bg-white p-4">
-                    <div className="field-label">Open Deals</div>
-                    <div className="mt-2 text-2xl font-semibold text-stone-900">{openDeals}</div>
-                  </div>
-                  <div className="rounded-xl border border-sand-200 bg-white p-4">
-                    <div className="field-label">Projects</div>
-                    <div className="mt-2 text-2xl font-semibold text-stone-900">{projects.length}</div>
-                  </div>
-                  <div className="rounded-xl border border-sand-200 bg-white p-4">
-                    <div className="field-label">Tasks Done</div>
-                    <div className="mt-2 text-2xl font-semibold text-stone-900">
-                      {doneTasks} <span className="text-sm text-sand-700">/ {tasks.length}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              return (
+                <div className="flex min-h-0 flex-1 flex-col gap-6">
+                  <header>
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Dashboard Overview</h1>
+                    <p className="mt-2 text-sm text-slate-500 sm:text-base">Welcome back, here&apos;s what&apos;s happening today.</p>
+                  </header>
 
-              <div className="panel animate-enter p-6" style={{ animationDelay: '110ms' }}>
-                <h2 className="text-3xl text-sand-900">Recent Deals</h2>
-                <div className="mt-4 space-y-3">
-                  {deals.length === 0 && <div className="text-sm text-sand-700">No deals yet.</div>}
-                  {deals.slice(0, 6).map((d) => {
-                    const org = orgById.get(d.organizationId);
-                    const contact = contactById.get(d.contactId);
-                    const stage = stageById.get(d.pipelineStageId);
-                    return (
-                      <div key={d.id} className="rounded-xl border border-sand-200 bg-white p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <div className="text-lg font-semibold text-stone-900">{d.title}</div>
-                            <div className="mt-1 text-sm text-sand-700">
-                              {org?.name || 'Unknown org'}
-                              {contact ? ` · ${contact.firstName} ${contact.lastName}` : ''}
-                            </div>
+                  <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                    {dashboardKpis.map((stat) => (
+                      <article key={stat.title} className="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.3)]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-500">{stat.title}</p>
+                            <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{stat.value}</p>
+                            <p className={`mt-2 text-xs font-medium ${stat.changeClass}`}>{stat.change}</p>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="pill">{d.status}</span>
-                            {stage && <span className="pill">{stage.name}</span>}
-                            <span className="pill">{currency(d.value, d.currency)}</span>
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-semibold ${stat.iconClass}`}>
+                            {stat.title[0]}
                           </div>
                         </div>
-                        <div className="mt-2 text-sm text-sand-700">Probability: {d.probability || 0}%</div>
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
-                          <span className="field-label">Stage</span>
-                          <select
-                            className="w-full max-w-xs rounded-xl border border-sand-200 bg-white px-3 py-2 text-sm text-stone-900 focus:border-sand-500 focus:outline-none focus:ring-2 focus:ring-sand-300"
-                            value={d.pipelineStageId || ''}
-                            onChange={(e) => void onUpdateDealStage(d, e.target.value)}
-                          >
-                            <option value="">None</option>
-                            {pipelineStages.map((st) => (
-                              <option key={st.id} value={st.id}>
-                                {st.name}
-                              </option>
-                            ))}
-	                          </select>
-	                        </div>
-	                      </div>
-	                    );
-	                  })}
-	                </div>
-	              </div>
-            </div>
-          )}
+                      </article>
+                    ))}
+                  </section>
+
+                  <section className="grid gap-6 xl:grid-cols-12">
+                    <article className="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.3)] xl:col-span-8">
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-lg font-semibold text-slate-900">Revenue Flow</h2>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                        >
+                          Last 6 months
+                        </button>
+                      </div>
+
+                      <div className="mt-5 overflow-x-auto">
+                        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[290px] min-w-[620px] w-full" role="img" aria-label="Revenue flow chart">
+                          <defs>
+                            <linearGradient id="live-revenue-area" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#6a5cff" stopOpacity="0.45" />
+                              <stop offset="100%" stopColor="#6a5cff" stopOpacity="0.04" />
+                            </linearGradient>
+                            <linearGradient id="live-revenue-line" x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor="#8b5cf6" />
+                              <stop offset="100%" stopColor="#4f46e5" />
+                            </linearGradient>
+                          </defs>
+
+                          {yTicks.map((tick) => {
+                            const y = padding.top + ((maxY - tick) / maxY) * chartInnerHeight;
+                            return <line key={`grid-${tick}`} x1={padding.left} y1={y} x2={chartWidth - padding.right} y2={y} stroke="#e2e8f0" strokeOpacity="0.6" />;
+                          })}
+
+                          {yTicks.map((tick) => {
+                            const y = padding.top + ((maxY - tick) / maxY) * chartInnerHeight;
+                            return (
+                              <text key={`y-${tick}`} x={padding.left - 12} y={y + 4} textAnchor="end" fill="#64748b" fontSize="11" fontWeight={500}>
+                                {tick.toLocaleString()}
+                              </text>
+                            );
+                          })}
+
+                          {areaPath && <path d={areaPath} fill="url(#live-revenue-area)" />}
+                          {linePath && <path d={linePath} fill="none" stroke="url(#live-revenue-line)" strokeWidth={3} />}
+
+                          {markerPoint && (
+                            <>
+                              <circle cx={markerPoint.x} cy={markerPoint.y} r={5.8} fill="#4f46e5" />
+                              <circle cx={markerPoint.x} cy={markerPoint.y} r={10} fill="none" stroke="#4f46e5" strokeOpacity="0.2" strokeWidth={6} />
+                              <g transform={`translate(${tooltipX} ${tooltipY})`}>
+                                <rect width="96" height="54" rx="10" fill="#10193d" />
+                                <text x="12" y="21" fill="#a5b4fc" fontSize="11" fontWeight={600}>
+                                  {markerData?.month || ''}
+                                </text>
+                                <text x="12" y="39" fill="#ffffff" fontSize="15" fontWeight={700}>
+                                  {(markerData?.value || 0).toLocaleString()}
+                                </text>
+                              </g>
+                            </>
+                          )}
+
+                          {dashboardRevenue.data.map((item, idx) => {
+                            const x = padding.left + (idx / denominator) * chartInnerWidth;
+                            return (
+                              <text key={`x-${item.month}-${idx}`} x={x} y={chartHeight - 16} textAnchor="middle" fill="#64748b" fontSize="11.5" fontWeight={500}>
+                                {item.month}
+                              </text>
+                            );
+                          })}
+                        </svg>
+                      </div>
+                    </article>
+
+                    <article className="rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.3)] xl:col-span-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-lg font-semibold text-slate-900">Recent Tasks</h2>
+                        <button type="button" className="text-xs font-semibold text-indigo-600 transition hover:text-indigo-700">
+                          View All
+                        </button>
+                      </div>
+
+                      <ul className="mt-5 space-y-4">
+                        {dashboardRecentTasks.map((task) => (
+                          <li key={`${task.title}-${task.date}`} className="rounded-xl border border-slate-100 bg-slate-50/65 px-3.5 py-3">
+                            <div className="flex items-start gap-3">
+                              <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${task.color}`} />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-800">{task.title}</p>
+                                <p className="mt-1 text-xs text-slate-500">{task.date}</p>
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                        {dashboardRecentTasks.length === 0 && <li className="text-sm text-slate-500">No tasks yet.</li>}
+                      </ul>
+                    </article>
+                  </section>
+
+                  <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-100 bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.3)]">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-semibold text-slate-900">Active Projects</h2>
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+                        aria-label="Open project actions"
+                      >
+                        ...
+                      </button>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-x-auto">
+                      <table className="w-full min-w-[760px] table-fixed border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
+                            <th className="pb-3 pr-4 font-semibold">Project Name</th>
+                            <th className="pb-3 pr-4 font-semibold">Status</th>
+                            <th className="pb-3 pr-4 font-semibold">Budget</th>
+                            <th className="pb-3 pr-4 font-semibold">Progress</th>
+                            <th className="pb-3 text-right font-semibold">Due Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {dashboardProjects.map((project) => (
+                            <tr key={project.name} className="align-middle">
+                              <td className="py-4 pr-4">
+                                <p className="text-sm font-semibold text-slate-900">{project.name}</p>
+                                <p className="mt-1 text-xs text-slate-500">{project.tags || 'General'}</p>
+                              </td>
+                              <td className="py-4 pr-4">
+                                <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold capitalize text-emerald-700">
+                                  {project.status}
+                                </span>
+                              </td>
+                              <td className="py-4 pr-4 text-sm font-medium text-slate-700">{project.budget}</td>
+                              <td className="py-4 pr-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-2 w-full max-w-[190px] overflow-hidden rounded-full bg-indigo-100">
+                                    <div className="h-2 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500" style={{ width: `${project.progress}%` }} />
+                                  </div>
+                                  <span className="text-xs font-semibold text-slate-600">{project.progress}%</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-right text-sm font-medium text-slate-600">{project.dueDate}</td>
+                            </tr>
+                          ))}
+                          {dashboardProjects.length === 0 && (
+                            <tr>
+                              <td className="py-6 text-sm text-slate-500" colSpan={5}>
+                                No projects yet.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+              );
+            })()}
 
           {view === 'organizations' && (
             <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
@@ -1696,7 +2081,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => startNew('organization', { name: '', industry: '', website: '' })}
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700"
                     disabled={crudBusy}
                   >
                     New organization
@@ -1956,7 +2341,7 @@ export default function HomePage() {
                           </label>
                           <button
                             onClick={() => void onCreateContactInteraction(c)}
-                            className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
+                            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
                           >
                             Save
                           </button>
@@ -2026,7 +2411,7 @@ export default function HomePage() {
                         primaryContact: false
                       })
                     }
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={crudBusy || organizations.length === 0}
                     title={organizations.length === 0 ? 'Create an organization first' : 'Create a contact'}
                   >
@@ -2193,7 +2578,7 @@ export default function HomePage() {
                                   <button
                                     type="button"
                                     onClick={() => void saveDealFocusDraft()}
-                                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700"
                                     disabled={crudBusy}
                                   >
                                     Save
@@ -2517,7 +2902,7 @@ export default function HomePage() {
                                               estimatedHours: 1
                                             })
                                           }
-                                          className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                          className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                                           disabled={crudBusy}
                                         >
                                           Add task
@@ -2527,7 +2912,7 @@ export default function HomePage() {
                                       <button
                                         type="button"
                                         onClick={() => void onCreateProjectFromDeal(d)}
-                                        className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={crudBusy}
                                       >
                                         Create project
@@ -2618,7 +3003,7 @@ export default function HomePage() {
                                           ricAmount: 0
                                         })
                                       }
-                                      className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                      className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700"
                                       disabled={crudBusy}
                                     >
                                       Add payment
@@ -2767,7 +3152,7 @@ export default function HomePage() {
                                     <button
                                       type="button"
                                       onClick={() => void onCreateDealInteraction(d)}
-                                      className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800"
+                                      className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700"
                                       disabled={crudBusy}
                                     >
                                       Save interaction
@@ -2901,7 +3286,7 @@ export default function HomePage() {
                                         status: 'open'
                                       })
                                     }
-                                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     disabled={crudBusy || organizations.length === 0 || contacts.length === 0}
                                     title={organizations.length === 0 || contacts.length === 0 ? 'Create an organization and contact first' : 'Create a deal'}
                                   >
@@ -3197,7 +3582,7 @@ export default function HomePage() {
                         status: 'active'
                       })
                     }
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={crudBusy || deals.length === 0}
                     title={deals.length === 0 ? 'Create a deal first' : 'Create a project'}
                   >
@@ -3323,7 +3708,7 @@ export default function HomePage() {
                                       ? 'bg-emerald-600'
                                       : row.project.status === 'support'
                                         ? 'bg-amber-500'
-                                        : 'bg-sand-700';
+                                        : 'bg-indigo-600';
                                   const projectBar = timelineBarStyle({ start: row.start, end: row.end }, layout);
                                   return (
                                     <div key={row.project.id} className="border-b border-sand-200 last:border-b-0">
@@ -3401,7 +3786,6 @@ export default function HomePage() {
                                           <div key={tRow.task.id} className="grid grid-cols-[340px_1fr] items-center">
                                             <div
                                               className="border-r border-sand-100 px-4 py-2 pl-11"
-                                              onClick={() => startEdit('task', tRow.task)}
                                               onContextMenu={(e) => onItemContextMenu(e, 'task', tRow.task)}
                                             >
                                               <div className="flex items-start gap-3">
@@ -3411,6 +3795,13 @@ export default function HomePage() {
                                                     {ownerLabel} · {tRow.task.status || 'todo'}
                                                   </div>
                                                 </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => onItemActionsClick(e, 'task', tRow.task)}
+                                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                                >
+                                                  ...
+                                                </button>
                                               </div>
                                             </div>
                                             <div className="relative h-10 border-l border-sand-100 bg-white">
@@ -3516,7 +3907,7 @@ export default function HomePage() {
                         estimatedHours: 1
                       })
                     }
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={crudBusy || projects.length === 0}
                     title={projects.length === 0 ? 'Create a project first' : 'Create a task'}
                   >
@@ -3590,11 +3981,9 @@ export default function HomePage() {
                               {colTasks.map((t) => {
                                 const project = projectById.get(t.projectId);
                                 const deal = project ? dealById.get(project.dealId) : undefined;
-                                const org = deal ? orgById.get(deal.organizationId) : undefined;
                                 const owner = userById.get(t.ownerUserId);
                                 const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
                                 const projectLabel = deal?.title || project?.name || 'Unknown project';
-                                const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                                 return (
                                   <div
                                     key={t.id}
@@ -3602,14 +3991,23 @@ export default function HomePage() {
                                     draggable
                                     onDragStart={(e) => onTaskKanbanDragStart(e, t.id)}
                                     onDragEnd={() => setTaskKanbanDragOverStatus(null)}
-                                    onClick={() => startEdit('task', t)}
                                     onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
                                   >
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-semibold text-stone-900">{t.title}</div>
-                                      <div className="mt-1 truncate text-xs text-sand-700">
-                                        {taskScopeLabel} · {ownerLabel}
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-semibold text-stone-900">{t.title}</div>
+                                        <div className="mt-1 truncate text-xs text-sand-700">
+                                          {projectLabel} · {ownerLabel}
+                                        </div>
                                       </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => onItemActionsClick(e, 'task', t)}
+                                        className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                        disabled={crudBusy}
+                                      >
+                                        ...
+                                      </button>
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-sand-700">
                                       <span className="pill">P{t.priority || 0}</span>
@@ -3636,16 +4034,12 @@ export default function HomePage() {
                       filteredTasks.map((t) => {
                         const project = projectById.get(t.projectId);
                         const deal = project ? dealById.get(project.dealId) : undefined;
-                        const org = deal ? orgById.get(deal.organizationId) : undefined;
                         const owner = userById.get(t.ownerUserId);
                         const ownerLabel = owner ? owner.name : t.ownerUserId ? 'Unknown' : 'Unassigned';
-                        const projectLabel = deal?.title || project?.name || 'Unknown project';
-                        const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                         return (
                           <div
                             key={t.id}
                             className="rounded-xl border border-sand-200 bg-white p-4"
-                            onClick={() => startEdit('task', t)}
                             onContextMenu={(e) => onItemContextMenu(e, 'task', t)}
                           >
                             <div className="flex items-start gap-3">
@@ -3653,17 +4047,23 @@ export default function HomePage() {
                                 type="checkbox"
                                 checked={selectedSet.has(t.id)}
                                 onChange={() => toggleSelected(t.id)}
-                                onClick={(e) => e.stopPropagation()}
                                 className="mt-1"
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="text-lg font-semibold text-stone-900">{t.title}</div>
-                                <div className="mt-1 text-sm text-sand-700">{taskScopeLabel}</div>
+                                <div className="mt-1 text-sm text-sand-700">{deal?.title || project?.name || 'Unknown project'}</div>
                                 <div className="mt-2 text-xs text-sand-700">Owner: {ownerLabel}</div>
                               </div>
                               <div className="flex flex-wrap items-start gap-2">
                                 <span className="pill">{t.status}</span>
                                 <span className="pill">P{t.priority || 0}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => onItemActionsClick(e, 'task', t)}
+                                  className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                >
+                                  ...
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -3716,11 +4116,9 @@ export default function HomePage() {
                                   const task = row.task;
                                   const project = projectById.get(task.projectId);
                                   const deal = project ? dealById.get(project.dealId) : undefined;
-                                  const org = deal ? orgById.get(deal.organizationId) : undefined;
                                   const owner = userById.get(task.ownerUserId);
                                   const ownerLabel = owner ? owner.name : task.ownerUserId ? 'Unknown' : 'Unassigned';
                                   const projectLabel = deal?.title || project?.name || 'Unknown project';
-                                  const taskScopeLabel = org?.name ? `${org.name} · ${projectLabel}` : projectLabel;
                                   const barColor =
                                     task.status === 'done'
                                       ? 'bg-emerald-500'
@@ -3735,25 +4133,27 @@ export default function HomePage() {
                                       key={task.id}
                                       className="grid grid-cols-[340px_1fr] items-center border-b border-sand-100 last:border-b-0"
                                     >
-                                      <div
-                                        className="border-r border-sand-100 px-4 py-3"
-                                        onClick={() => startEdit('task', task)}
-                                        onContextMenu={(e) => onItemContextMenu(e, 'task', task)}
-                                      >
+                                      <div className="border-r border-sand-100 px-4 py-3" onContextMenu={(e) => onItemContextMenu(e, 'task', task)}>
                                         <div className="flex items-start gap-3">
                                           <input
                                             type="checkbox"
                                             checked={selectedSet.has(task.id)}
                                             onChange={() => toggleSelected(task.id)}
-                                            onClick={(e) => e.stopPropagation()}
                                             className="mt-1"
                                           />
                                           <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-semibold text-stone-900">{task.title}</div>
                                             <div className="mt-1 truncate text-xs text-sand-700">
-                                              {taskScopeLabel} · {ownerLabel} · {task.status || 'todo'}
+                                              {projectLabel} · {ownerLabel} · {task.status || 'todo'}
                                             </div>
                                           </div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => onItemActionsClick(e, 'task', task)}
+                                            className="rounded-lg border border-sand-200 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                                          >
+                                            ...
+                                          </button>
                                         </div>
                                       </div>
                                       <div className="relative h-10 border-l border-sand-100 bg-white">
@@ -3802,7 +4202,7 @@ export default function HomePage() {
                         discountAmount: 0
                       })
                     }
-                    className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={crudBusy || deals.length === 0}
                     title={deals.length === 0 ? 'Create a deal first' : 'Create a quotation'}
                   >
@@ -3959,6 +4359,87 @@ export default function HomePage() {
             </div>
           )}
 
+          {view === 'agent' && (
+            <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-3xl text-sand-900">Agent</h2>
+                  <p className="mt-1 text-sm text-sand-700">Task commands with live execution on your real data.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAgentMessages([])}
+                  className="rounded-lg border border-sand-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sand-700 transition hover:bg-sand-50"
+                  disabled={agentBusy || agentMessages.length === 0}
+                >
+                  Clear history
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 rounded-2xl border border-sand-200 bg-white p-4">
+                <label>
+                  <span className="field-label">Command</span>
+                  <textarea
+                    className="field-input"
+                    rows={3}
+                    value={agentInput}
+                    onChange={(e) => setAgentInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        void onRunAgent();
+                      }
+                    }}
+                    placeholder="Example: create task publish pricing page in project TechFlow and assign to John"
+                  />
+                </label>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-sand-700">Tip: press Cmd/Ctrl+Enter to send.</p>
+                  <button
+                    type="button"
+                    onClick={() => void onRunAgent()}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={agentBusy || !agentInput.trim()}
+                  >
+                    {agentBusy ? 'Running...' : 'Run command'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex-1 min-h-0 overflow-y-auto pr-1">
+                <div className="grid gap-3">
+                  {agentMessages.length === 0 && (
+                    <div className="rounded-xl border border-sand-200 bg-white p-4 text-sm text-sand-700">No commands yet.</div>
+                  )}
+
+                  {agentMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={[
+                        'rounded-xl border p-4',
+                        message.role === 'user'
+                          ? 'border-indigo-200 bg-indigo-50 text-indigo-900'
+                          : 'border-sand-200 bg-white text-sand-900'
+                      ].join(' ')}
+                    >
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-sand-600">
+                        {message.role === 'user' ? 'You' : 'Agent'}
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{message.text}</p>
+                      {message.details && message.details.length > 0 && (
+                        <ul className="mt-3 space-y-1 text-xs text-sand-700">
+                          {message.details.map((detail) => (
+                            <li key={detail}>{detail}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {view === 'settings' && (
             <div className="panel animate-enter flex flex-1 min-h-0 flex-col overflow-hidden p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3968,7 +4449,7 @@ export default function HomePage() {
                 </div>
                 <button
                   onClick={() => void saveSettings()}
-                  className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800"
+                  className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
                   disabled={!settings}
                 >
                   Save
@@ -3984,21 +4465,6 @@ export default function HomePage() {
 
                 {settings && (
                   <div className={['grid gap-4 md:grid-cols-2', settingsNotice ? 'mt-6' : ''].join(' ')}>
-                    <label>
-                      <span className="field-label">Theme</span>
-                      <select
-                        className="field-input"
-                        value={settings.theme || 'sand'}
-                        onChange={(e) => setSettings((prev) => ({ ...(prev || {}), theme: e.target.value }))}
-                      >
-                        <option value="sand">Sand (default)</option>
-                        <option value="ocean">Ocean</option>
-                        <option value="forest">Forest</option>
-                        <option value="graphite">Graphite</option>
-                        <option value="rose">Rose</option>
-                        <option value="wemadeit-studio">Wemadeit Studio</option>
-                      </select>
-                    </label>
                     <label>
                       <span className="field-label">Provider</span>
                       <select
@@ -4105,7 +4571,7 @@ export default function HomePage() {
                             password: ''
                           })
                         }
-                        className="rounded-lg bg-sand-700 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={crudBusy}
                       >
                         New user
@@ -5070,7 +5536,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => void saveEdit()}
-                className="rounded-xl bg-sand-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={crudBusy}
               >
                 {crudBusy ? 'Saving...' : 'Save'}

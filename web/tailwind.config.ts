@@ -37,7 +37,7 @@ const config: Config = {
         enter: 'enter 450ms ease-out both'
       },
       boxShadow: {
-        soft: '0 18px 40px rgba(81, 54, 32, 0.10)'
+        soft: '0 20px 40px -28px rgba(15, 23, 42, 0.3)'
       }
     }
   },

@@ -203,6 +203,18 @@ export type AppState = {
   users: User[];
 };
 
+export type AgentActionResult = {
+  tool: string;
+  status: string;
+  message: string;
+  task?: Task;
+};
+
+export type AgentCommandResponse = {
+  reply: string;
+  results: AgentActionResult[];
+};
+
 function apiBase(): string {
   const raw = process.env.NEXT_PUBLIC_API_URL;
   const v = (raw || '').trim();
@@ -437,7 +449,6 @@ export async function getSettings() {
 
 export async function updateSettings(payload: any) {
   const safePayload = {
-    theme: payload?.theme,
     provider: payload?.provider,
     model: payload?.model,
     ollama_base_url: payload?.ollama_base_url,
@@ -456,5 +467,12 @@ export async function updateSettings(payload: any) {
   return request<any>('/api/settings', {
     method: 'POST',
     body: JSON.stringify(safePayload)
+  });
+}
+
+export async function runAgentCommand(message: string) {
+  return request<AgentCommandResponse>('/api/agent/command', {
+    method: 'POST',
+    body: JSON.stringify({ message })
   });
 }

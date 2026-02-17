@@ -6,106 +6,21 @@
   :root {
     color-scheme: light;
 
-    /* sand (default) */
-    --sand-50: 254 248 242;
-    --sand-100: 250 236 222;
-    --sand-200: 243 217 189;
-    --sand-300: 233 194 154;
-    --sand-400: 220 159 104;
-    --sand-500: 207 132 69;
-    --sand-600: 187 107 55;
-    --sand-700: 155 84 47;
-    --sand-800: 125 69 48;
-    --sand-900: 101 58 42;
-    --stoneink: 31 26 22;
+    /* Unified palette mapped to existing sand tokens. */
+    --sand-50: 248 250 252;
+    --sand-100: 241 245 249;
+    --sand-200: 226 232 240;
+    --sand-300: 203 213 225;
+    --sand-400: 148 163 184;
+    --sand-500: 100 116 139;
+    --sand-600: 71 85 105;
+    --sand-700: 51 65 85;
+    --sand-800: 30 41 59;
+    --sand-900: 15 23 42;
+    --stoneink: 15 23 42;
 
-    --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino;
-    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
-  }
-
-  :root[data-theme='ocean'] {
-    --sand-50: 244 249 255;
-    --sand-100: 228 241 255;
-    --sand-200: 201 227 255;
-    --sand-300: 167 209 255;
-    --sand-400: 115 176 255;
-    --sand-500: 62 140 255;
-    --sand-600: 45 115 230;
-    --sand-700: 36 89 189;
-    --sand-800: 31 74 149;
-    --sand-900: 28 61 120;
-    --stoneink: 12 26 43;
-
-    --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino;
-    --font-body: "Gill Sans", "Avenir Next", "Segoe UI", "Helvetica Neue";
-  }
-
-  :root[data-theme='forest'] {
-    --sand-50: 244 251 246;
-    --sand-100: 227 245 232;
-    --sand-200: 198 232 208;
-    --sand-300: 155 214 176;
-    --sand-400: 105 190 135;
-    --sand-500: 58 162 95;
-    --sand-600: 47 138 81;
-    --sand-700: 39 111 67;
-    --sand-800: 33 90 55;
-    --sand-900: 29 75 48;
-    --stoneink: 19 32 24;
-
-    --font-display: Palatino, "Iowan Old Style", "Palatino Linotype";
-    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
-  }
-
-  :root[data-theme='graphite'] {
-    --sand-50: 247 247 248;
-    --sand-100: 236 236 240;
-    --sand-200: 214 215 221;
-    --sand-300: 185 187 196;
-    --sand-400: 145 147 161;
-    --sand-500: 110 113 132;
-    --sand-600: 88 91 107;
-    --sand-700: 63 66 80;
-    --sand-800: 42 45 56;
-    --sand-900: 31 34 43;
-    --stoneink: 15 17 21;
-
-    --font-display: "Avenir Next", "Helvetica Neue", "Segoe UI";
-    --font-body: Menlo, "SF Mono", ui-monospace, monospace;
-  }
-
-  :root[data-theme='rose'] {
-    --sand-50: 255 246 247;
-    --sand-100: 255 230 234;
-    --sand-200: 255 200 210;
-    --sand-300: 255 160 179;
-    --sand-400: 255 110 142;
-    --sand-500: 244 67 114;
-    --sand-600: 217 53 99;
-    --sand-700: 181 44 84;
-    --sand-800: 143 37 71;
-    --sand-900: 111 32 60;
-    --stoneink: 42 15 23;
-
-    --font-display: Didot, "Bodoni 72", "Iowan Old Style", Palatino;
-    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
-  }
-
-  :root[data-theme='wemadeit-studio'] {
-    --sand-50: 243 250 248;
-    --sand-100: 223 242 238;
-    --sand-200: 195 230 224;
-    --sand-300: 160 210 203;
-    --sand-400: 123 189 180;
-    --sand-500: 93 172 162;
-    --sand-600: 74 144 134;
-    --sand-700: 58 118 110;
-    --sand-800: 47 95 89;
-    --sand-900: 35 72 67;
-    --stoneink: 27 43 40;
-
-    --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue";
-    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue";
+    --font-display: "SF Pro Display", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    --font-body: "SF Pro Text", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   }
 
   html,
@@ -114,7 +29,7 @@
   }
 
   body {
-    @apply font-body antialiased;
+    @apply font-body text-base leading-relaxed antialiased;
   }
 
   h1,
@@ -127,18 +42,18 @@
 
 @layer components {
   .panel {
-    @apply rounded-2xl border border-sand-200 bg-white/90 shadow-soft backdrop-blur;
+    @apply rounded-2xl border border-sand-200 bg-white shadow-soft;
   }
 
   .field-label {
-    @apply text-xs font-semibold uppercase tracking-[0.08em] text-sand-700;
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-sand-600;
   }
 
   .field-input {
-    @apply mt-2 w-full rounded-xl border border-sand-200 bg-sand-50 px-3 py-2 text-sm text-stone-900 placeholder:text-sand-500 focus:border-sand-500 focus:outline-none focus:ring-2 focus:ring-sand-300;
+    @apply mt-2 w-full rounded-xl border border-sand-200 bg-sand-50 px-3 py-2.5 text-[15px] leading-[1.45] text-sand-900 placeholder:text-sand-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200;
   }
 
   .pill {
-    @apply inline-flex items-center rounded-full border border-sand-300 bg-sand-100 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-sand-700;
+    @apply inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-indigo-700;
   }
 }
